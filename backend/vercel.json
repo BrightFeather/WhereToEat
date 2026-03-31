@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "@vercel/node@3"
+    }
+  },
+  "env": {
+    "GOOGLE_PLACES_API_KEY": "@google_places_api_key",
+    "YELP_API_KEY": "@yelp_api_key",
+    "RESY_EMAIL": "@resy_email",
+    "RESY_PASSWORD": "@resy_password",
+    "TOCK_EMAIL": "@tock_email",
+    "TOCK_PASSWORD": "@tock_password",
+    "STRIPE_SECRET_KEY": "@stripe_secret_key",
+    "STRIPE_WEBHOOK_SECRET": "@stripe_webhook_secret"
+  }
+}
