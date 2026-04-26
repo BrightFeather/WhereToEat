@@ -14,57 +14,137 @@ struct ImportedRestaurantDraft {
     var website: URL?
     var photos: [URL]
     var rating: Double?
+    var reviewCount: Int?
     var cuisineTags: [CuisineTag]
     var notes: String?
     var sourceLink: SourceLink
+    /// All XHS posts that mentioned this restaurant. For an import flow
+    /// today this is always the single pasted post, but the shape is
+    /// future-proof for batch / multi-post imports.
+    var xhsSources: [XHSSource]?
+    // Enrichment data from backend (XHS imports)
+    var googlePlaceId: String?
+    var googleMapsUrl: URL?
+    var instagramUrl: URL?
+    var resyBookingUrl: URL?
+    var opentableBookingUrl: URL?
+}
+
+// MARK: - XHS Import Response Models
+
+struct XHSImportRestaurant: Codable {
+    var name: String
+    var address: String?
+    var neighborhood: String?
+    var cuisineType: String?
+    var recommendation: String?
+    /// Per-post evidence — mirrors `weekly.ts → sources[]`. Optional so older
+    /// cached responses still decode; the synthesised single source from
+    /// `recommendation` is used as a fallback in `importXiaohongshu`.
+    var sources: [XHSSource]?
+    var googlePlaceId: String?
+    var googleMapsUrl: String?
+    var photoUrls: [String]?
+    var websiteUrl: String?
+    var googleRating: Double?
+    var googleUserRatingCount: Int?
+    var instagramUrl: String?
+    var resyBookingUrl: String?
+    var opentableBookingUrl: String?
+}
+
+struct XHSImportData: Codable {
+    var postTitle: String
+    var postUrl: String
+    var restaurants: [XHSImportRestaurant]
 }
 
 final class CustomListImportService: ObservableObject {
 
     func detectSource(from url: URL) -> ImportSource {
+        if XHSURLParser.isXHSHost(url) { return .xiaohongshu }
         let host = url.host?.lowercased() ?? ""
         if host.contains("maps.app.goo.gl") || host.contains("goo.gl") ||
            host.contains("maps.google.com") || host.contains("google.com/maps") {
             return .googleMaps
         } else if host.contains("yelp.com") {
             return .yelp
-        } else if host.contains("xiaohongshu.com") || host.contains("xhslink.com") {
-            return .xiaohongshu
         } else {
             return .generic
         }
     }
 
-    func importURL(_ rawURL: String) async throws -> ImportedRestaurantDraft {
+    func importURL(_ rawURL: String) async throws -> [ImportedRestaurantDraft] {
         guard let url = URL(string: rawURL) else {
             throw ImportError.invalidURL
         }
 
-        // Resolve redirects (goo.gl / xhslink short links)
-        let resolvedURL = try await resolveRedirects(url)
-        let source = detectSource(from: resolvedURL)
+        let source = detectSource(from: url)
 
         switch source {
-        case .googleMaps:
-            return try await importGoogleMaps(resolvedURL)
-        case .yelp:
-            return try await importYelp(resolvedURL)
         case .xiaohongshu:
-            return try await importXiaohongshu(resolvedURL)
+            return try await importXiaohongshu(url)
+        case .googleMaps:
+            return [try await importGoogleMaps(url)]
+        case .yelp:
+            return [try await importYelp(url)]
         case .generic:
-            return try await importGenericWebsite(resolvedURL)
+            return [try await importGenericWebsite(url)]
         }
     }
 
-    // MARK: - Private parsers
+    // MARK: - XHS (backend-powered, multi-restaurant)
+
+    private func importXiaohongshu(_ url: URL) async throws -> [ImportedRestaurantDraft] {
+        let response = try await APIClient.shared.request(
+            .importXhs(url: url.absoluteString),
+            as: XHSImportData.self
+        )
+
+        let postUrl = URL(string: response.postUrl) ?? url
+
+        return response.restaurants.map { r in
+            // Backend always sends `sources[]` now (single-element for an
+            // import flow). Synthesise from `recommendation` when an older
+            // backend response is cached without it.
+            let sources: [XHSSource] = r.sources ?? [
+                XHSSource(
+                    postUrl: response.postUrl,
+                    recommendation: r.recommendation,
+                    likes: 0,
+                    postCreatedAt: nil,
+                    sourceType: "xiaohongshu",
+                    author: nil,
+                    sourceTitle: response.postTitle
+                )
+            ]
+            return ImportedRestaurantDraft(
+                name: r.name,
+                address: r.address,
+                photos: (r.photoUrls ?? []).compactMap { URL(string: $0) },
+                rating: r.googleRating,
+                reviewCount: r.googleUserRatingCount,
+                cuisineTags: CuisineTag.from(string: r.cuisineType),
+                notes: r.recommendation,
+                sourceLink: SourceLink(platform: .xiaohongshu, url: postUrl),
+                xhsSources: sources,
+                googlePlaceId: r.googlePlaceId,
+                googleMapsUrl: r.googleMapsUrl.flatMap { URL(string: $0) },
+                instagramUrl: r.instagramUrl.flatMap { URL(string: $0) },
+                resyBookingUrl: r.resyBookingUrl.flatMap { URL(string: $0) },
+                opentableBookingUrl: r.opentableBookingUrl.flatMap { URL(string: $0) }
+            )
+        }
+    }
+
+    // MARK: - Private parsers (single-restaurant, client-side)
 
     private func importGoogleMaps(_ url: URL) async throws -> ImportedRestaurantDraft {
-        // Fetch the page HTML and parse Open Graph / schema.org data
-        let html = try await fetchHTML(url)
+        let resolvedURL = try await resolveRedirects(url)
+        let html = try await fetchHTML(resolvedURL)
         let og = parseOpenGraph(html)
         let schema = parseSchemaOrg(html)
 
-        // Extract place name from og:title (usually "Name - Google Maps")
         var name = og["og:title"] ?? schema["name"] ?? "Unknown"
         name = name.replacingOccurrences(of: " - Google Maps", with: "")
                    .replacingOccurrences(of: " – Google Maps", with: "")
@@ -72,10 +152,9 @@ final class CustomListImportService: ObservableObject {
         let address = schema["address"] ?? og["og:description"]
         let imageURL = (og["og:image"]).flatMap { URL(string: $0) }
 
-        // Extract coordinates from URL if present (?q=lat,lng or @lat,lng)
         var lat: Double?
         var lng: Double?
-        if let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
+        if let query = URLComponents(url: resolvedURL, resolvingAgainstBaseURL: false)?.queryItems {
             if let q = query.first(where: { $0.name == "q" })?.value {
                 let parts = q.split(separator: ",")
                 if parts.count == 2 {
@@ -84,10 +163,9 @@ final class CustomListImportService: ObservableObject {
                 }
             }
         }
-        if lat == nil, let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path {
-            // @lat,lng,zoom pattern
+        if lat == nil, let path = URLComponents(url: resolvedURL, resolvingAgainstBaseURL: false)?.path {
             if let range = path.range(of: #"@(-?\d+\.\d+),(-?\d+\.\d+)"#, options: .regularExpression) {
-                let matched = String(path[range]).dropFirst() // remove @
+                let matched = String(path[range]).dropFirst()
                 let parts = matched.split(separator: ",")
                 if parts.count >= 2 { lat = Double(parts[0]); lng = Double(parts[1]) }
             }
@@ -100,17 +178,17 @@ final class CustomListImportService: ObservableObject {
             longitude: lng,
             photos: [imageURL].compactMap { $0 },
             cuisineTags: [],
-            sourceLink: SourceLink(platform: .google, url: url)
+            sourceLink: SourceLink(platform: .google, url: resolvedURL)
         )
     }
 
     private func importYelp(_ url: URL) async throws -> ImportedRestaurantDraft {
-        let html = try await fetchHTML(url)
+        let resolvedURL = try await resolveRedirects(url)
+        let html = try await fetchHTML(resolvedURL)
         let og = parseOpenGraph(html)
         let schema = parseSchemaOrg(html)
 
         var name = og["og:title"] ?? schema["name"] ?? "Unknown"
-        // Yelp og:title is usually just the restaurant name
         name = name.components(separatedBy: " - Yelp").first ?? name
 
         let address = schema["address"]
@@ -124,30 +202,13 @@ final class CustomListImportService: ObservableObject {
             photos: [imageURL].compactMap { $0 },
             rating: rating,
             cuisineTags: [],
-            sourceLink: SourceLink(platform: .yelp, url: url)
-        )
-    }
-
-    private func importXiaohongshu(_ url: URL) async throws -> ImportedRestaurantDraft {
-        let html = try await fetchHTML(url)
-        let og = parseOpenGraph(html)
-
-        let title = og["og:title"] ?? "Unknown"
-        let description = og["og:description"] ?? ""
-        let imageURL = og["og:image"].flatMap { URL(string: $0) }
-
-        // Best-effort: use post title as name, description as notes
-        return ImportedRestaurantDraft(
-            name: title.trimmingCharacters(in: .whitespaces),
-            photos: [imageURL].compactMap { $0 },
-            cuisineTags: [],
-            notes: description,
-            sourceLink: SourceLink(platform: .xiaohongshu, url: url, rawContent: html)
+            sourceLink: SourceLink(platform: .yelp, url: resolvedURL)
         )
     }
 
     private func importGenericWebsite(_ url: URL) async throws -> ImportedRestaurantDraft {
-        let html = try await fetchHTML(url)
+        let resolvedURL = try await resolveRedirects(url)
+        let html = try await fetchHTML(resolvedURL)
         let og = parseOpenGraph(html)
         let schema = parseSchemaOrg(html)
 
@@ -159,11 +220,11 @@ final class CustomListImportService: ObservableObject {
         return ImportedRestaurantDraft(
             name: name.trimmingCharacters(in: .whitespaces),
             address: address,
-            website: url,
+            website: resolvedURL,
             photos: [imageURL].compactMap { $0 },
             cuisineTags: [],
             notes: description,
-            sourceLink: SourceLink(platform: .website, url: url, rawContent: html)
+            sourceLink: SourceLink(platform: .website, url: resolvedURL, rawContent: html)
         )
     }
 
@@ -182,7 +243,6 @@ final class CustomListImportService: ObservableObject {
     private func resolveRedirects(_ url: URL) async throws -> URL {
         var request = URLRequest(url: url)
         request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        // Only follow redirects, don't load body
         let (_, response) = try await URLSession.shared.data(for: request)
         return (response as? HTTPURLResponse)?.url ?? url
     }

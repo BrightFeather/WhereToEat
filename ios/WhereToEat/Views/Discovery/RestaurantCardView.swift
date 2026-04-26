@@ -3,110 +3,259 @@ import SwiftUI
 struct RestaurantCardView: View {
     let restaurant: Restaurant
     var swipeOffset: CGFloat = 0
+    var lookedAt: Bool = false      // "You looked at this" indicator
 
     private var rotation: Double { Double(swipeOffset / 20) }
     private var likeOpacity: Double { max(0, Double(swipeOffset / 80)) }
     private var nopeOpacity: Double { max(0, Double(-swipeOffset / 80)) }
 
+    @State private var photoIndex: Int = 0
+
+    /// Cross-source accent shown next to the source badge. Mirrors the rule
+    /// in `RestaurantDetailView.sourcesHeaderLabel`:
+    ///   1. If XHS mention count ≥ 3 → "N mentions in 小红书"
+    ///   2. Else if any non-XHS source exists → "Featured in Eater" / "Featured in Resy"
+    ///      (multiple non-XHS → "Featured in Eater + Resy")
+    ///   3. Else nil — single-source XHS card stays clean.
+    private var sourceAccentLabel: String? {
+        guard let sources = restaurant.xhsSources, !sources.isEmpty else { return nil }
+        let xhsCount = sources.filter { $0.resolvedType == "xiaohongshu" }.count
+        if xhsCount >= 3 { return "\(xhsCount) mentions on 小红书" }
+
+        let others = Set(sources.map(\.resolvedType)).subtracting(["xiaohongshu"])
+        guard !others.isEmpty else { return nil }
+        let names = others.compactMap { DiscoverySource(rawValue: $0)?.shortName }
+            .sorted()
+            .joined(separator: " + ")
+        return "Featured in \(names)"
+    }
+
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Hero image
-            AsyncImage(url: restaurant.primaryPhotoURL) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFill()
-                case .failure, .empty:
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                // Photo carousel
+                let urls = restaurant.photos.isEmpty ? [restaurant.primaryPhotoURL].compactMap { $0 } : restaurant.photos
+                if urls.isEmpty {
                     Color(.systemGray5)
                         .overlay(Image(systemName: "fork.knife").font(.system(size: 60)).foregroundColor(.secondary))
-                @unknown default:
-                    Color(.systemGray5)
-                }
-            }
-            .clipped()
-
-            // Gradient + info overlay
-            VStack(alignment: .leading, spacing: 8) {
-                Spacer()
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(restaurant.name)
-                            .font(.title2).fontWeight(.bold).foregroundColor(.white)
-
-                        HStack(spacing: 6) {
-                            if let neighborhood = restaurant.neighborhood {
-                                Label(neighborhood, systemImage: "mappin")
-                                    .font(.subheadline).foregroundColor(.white.opacity(0.9))
-                            }
-                            if let price = restaurant.priceRange {
-                                Text(String(repeating: "$", count: price))
-                                    .font(.subheadline).foregroundColor(.white.opacity(0.9))
-                            }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                } else if urls.count == 1 {
+                    AsyncImage(url: urls[0]) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Color(.systemGray5)
                         }
-
-                        // Cuisine tags
-                        if !restaurant.cuisineTags.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(restaurant.cuisineTags) { tag in
-                                        TagChipView(label: tag.displayName, isSelected: true, color: .white)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                } else {
+                    // Show current photo (no TabView — its swipe gesture conflicts with card swiping)
+                    AsyncImage(url: urls[photoIndex % urls.count]) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Color(.systemGray5)
+                        }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    // Tap left/right halves to navigate photos
+                    .overlay {
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        photoIndex = max(0, photoIndex - 1)
                                     }
+                                }
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        photoIndex = min(urls.count - 1, photoIndex + 1)
+                                    }
+                                }
+                        }
+                    }
+
+                    // Photo dot indicators (top-right)
+                    HStack(spacing: 4) {
+                        ForEach(0..<urls.count, id: \.self) { i in
+                            Circle()
+                                .fill(i == photoIndex ? Color.white : Color.white.opacity(0.45))
+                                .frame(width: 5, height: 5)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.black.opacity(0.3))
+                    .clipShape(Capsule())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, 12)
+                    .padding(.trailing, 12)
+                }
+
+                // Gradient + info overlay
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer()
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Source badge + "looked at" indicator
+                        HStack {
+                            SourceBadgeView(origin: restaurant.sourceOrigin)
+                            if let accent = sourceAccentLabel {
+                                Text(accent)
+                                    .font(.caption2).fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.black.opacity(0.35))
+                                    .clipShape(Capsule())
+                            }
+                            if lookedAt {
+                                Text("seen 👀")
+                                    .font(.caption2).fontWeight(.medium)
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.white.opacity(0.2))
+                                    .clipShape(Capsule())
+                            }
+                            Spacer()
+                            if let rating = restaurant.rating {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "star.fill").foregroundColor(.yellow).font(.caption)
+                                    Text(String(format: "%.1f", rating))
+                                        .font(.subheadline).fontWeight(.semibold).foregroundColor(.white)
                                 }
                             }
                         }
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 6) {
-                        if let rating = restaurant.rating {
-                            HStack(spacing: 2) {
-                                Image(systemName: "star.fill").foregroundColor(.yellow).font(.caption)
-                                Text(String(format: "%.1f", rating))
-                                    .font(.subheadline).fontWeight(.semibold).foregroundColor(.white)
+
+                        HStack(alignment: .bottom) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(restaurant.name)
+                                        .font(.title2).fontWeight(.bold).foregroundColor(.white)
+                                        .lineLimit(2)
+                                    if UserProfile.load().showRatings, let rating = restaurant.rating {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: "star.fill")
+                                                .font(.caption)
+                                                .foregroundColor(.yellow)
+                                            Text(String(format: "%.1f", rating))
+                                                .font(.subheadline).fontWeight(.semibold)
+                                                .foregroundColor(.white)
+                                            if let count = restaurant.reviewCount, count > 0 {
+                                                Text("(\(formatRatingCount(count)))")
+                                                    .font(.caption)
+                                                    .foregroundColor(.white.opacity(0.8))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HStack(spacing: 6) {
+                                    if let neighborhood = restaurant.neighborhood {
+                                        Label(neighborhood, systemImage: "mappin")
+                                            .font(.subheadline).foregroundColor(.white.opacity(0.9))
+                                    }
+                                    if let price = restaurant.priceRange {
+                                        Text(String(repeating: "$", count: price))
+                                            .font(.subheadline).foregroundColor(.white.opacity(0.9))
+                                    }
+                                }
+
+                                if let rec = restaurant.xhsRecommendation {
+                                    let xhsURL = restaurant.sourceLinks.first(where: { $0.platform == .xiaohongshu })?.url
+                                    Button {
+                                        if let xhsURL { XhsURLOpener.open(xhsURL) }
+                                    } label: {
+                                        Text("\u{201C}\(rec)\u{201D}")
+                                            .font(.caption)
+                                            .italic()
+                                            .foregroundColor(.white.opacity(0.85))
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(xhsURL == nil)
+                                }
+
+                                if !restaurant.cuisineTags.isEmpty {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 6) {
+                                            ForEach(restaurant.cuisineTags) { tag in
+                                                TagChipView(label: tag.displayName, isSelected: true, color: .white)
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        if let source = restaurant.reservationSource {
-                            PlatformBadgeView(platform: source.platform)
+                            Spacer()
                         }
                     }
+                    .padding()
+                    .background(LinearGradient(
+                        colors: [.clear, .black.opacity(0.8)],
+                        startPoint: .top, endPoint: .bottom
+                    ))
                 }
-                .padding()
-                .background(LinearGradient(
-                    colors: [.clear, .black.opacity(0.75)],
-                    startPoint: .top, endPoint: .bottom
-                ))
+                .frame(width: geo.size.width)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(radius: 8, y: 4)
+            .overlay(swipeIndicatorOverlay)
+            .rotationEffect(.degrees(rotation))
+            .animation(.interactiveSpring(), value: swipeOffset)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(radius: 8, y: 4)
-        .overlay(swipeIndicatorOverlay)
-        .rotationEffect(.degrees(rotation))
-        .offset(x: swipeOffset)
-        .animation(.interactiveSpring(), value: swipeOffset)
     }
 
     @ViewBuilder
     private var swipeIndicatorOverlay: some View {
         ZStack {
-            // LIKE badge
-            Text("LIKE")
-                .font(.title).fontWeight(.heavy)
-                .foregroundColor(.green)
-                .padding(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.green, lineWidth: 3))
-                .rotationEffect(.degrees(-15))
+            // Like — top-left
+            Text("🔥")
+                .font(.system(size: 52))
+                .padding(12)
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+                .rotationEffect(.degrees(-12))
                 .opacity(likeOpacity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(24)
+                .padding(28)
 
-            // NOPE badge
-            Text("NOPE")
-                .font(.title).fontWeight(.heavy)
-                .foregroundColor(.red)
-                .padding(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red, lineWidth: 3))
-                .rotationEffect(.degrees(15))
+            // Nope — top-right
+            Text("👎")
+                .font(.system(size: 52))
+                .padding(12)
+                .background(.ultraThinMaterial)
+                .clipShape(Circle())
+                .rotationEffect(.degrees(12))
                 .opacity(nopeOpacity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(24)
+                .padding(28)
+        }
+    }
+}
+
+struct SourceBadgeView: View {
+    let origin: SourceOrigin
+
+    var body: some View {
+        Text(origin.displayName)
+            .font(.caption).fontWeight(.semibold)
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(badgeColor.opacity(0.85))
+            .clipShape(Capsule())
+    }
+
+    private var badgeColor: Color {
+        switch origin {
+        case .xhs: return Color(red: 1, green: 0.14, blue: 0.26)
+        case .yelp: return Color(red: 0.83, green: 0.14, blue: 0.14)
+        case .eater: return Color(red: 0.91, green: 0.20, blue: 0.11)
+        case .custom: return Color(red: 0.20, green: 0.78, blue: 0.35)
         }
     }
 }
