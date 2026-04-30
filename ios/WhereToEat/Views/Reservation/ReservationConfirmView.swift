@@ -4,6 +4,11 @@ struct ReservationConfirmView: View {
     let slot: TimeSlot
     @ObservedObject var viewModel: ReservationViewModel
 
+    init(slot: TimeSlot, viewModel: ReservationViewModel) {
+        self.slot = slot
+        self.viewModel = viewModel
+    }
+
     private let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .full
@@ -16,9 +21,13 @@ struct ReservationConfirmView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Restaurant photo header
                 if let url = viewModel.restaurant.primaryPhotoURL {
-                    AsyncImage(url: url) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: { Color(.systemGray5) }
+                    CachedAsyncImage(url: url) { phase in
+                        if case .success(let img) = phase {
+                            img.resizable().scaledToFill()
+                        } else {
+                            Color(.systemGray5)
+                        }
+                    }
                     .frame(height: 180).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
@@ -54,9 +63,9 @@ struct ReservationConfirmView: View {
 
                 Spacer(minLength: 20)
 
-                // Confirm button
+                // Confirm button — Stage 2: direct API booking
                 Button {
-                    Task { await viewModel.confirmBooking(slot: slot) }
+                    // TODO Stage 2: call reservationService.bookSlot
                 } label: {
                     HStack {
                         if slot.depositRequired {
@@ -71,9 +80,10 @@ struct ReservationConfirmView: View {
                     .background(Color.accentColor)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
+                .disabled(true)
 
                 Button("Choose a different time") {
-                    viewModel.state = .selectingSlot
+                    viewModel.state = .preBrowser
                 }
                 .font(.subheadline)
                 .foregroundColor(.secondary)

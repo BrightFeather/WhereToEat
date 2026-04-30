@@ -15,9 +15,29 @@ final class CustomListViewModel: ObservableObject {
 
     private let importService = CustomListImportService()
     private let storageKey = "custom_restaurant_list"
+    private var weeklyCancellable: AnyCancellable?
+    private var authCancellable: AnyCancellable?
 
     init() {
         load()
+        // Pull the server-side favorites once on init and merge with the
+        // local cache. Server is the cross-device source of truth; local
+        // entries that the server didn't know about (e.g. saved while
+        // offline or before this sync shipped) are pushed up by the merge.
+        // Re-sync when the user signs in / signs out — the verified user id
+        // changes, so the favorites set under it does too. AuthService is
+        // `@MainActor`, so we have to hop onto the main actor before
+        // touching its `$state` publisher (mirrors `weeklyCancellable` below).
+        Task { @MainActor [weak self] in
+            await self?.syncFromServer()
+            self?.authCancellable = AuthService.shared.$state
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    Task { await self?.syncFromServer() }
+                }
+        }
+
         NotificationCenter.default.addObserver(
             forName: .saveRestaurant,
             object: nil,
@@ -37,6 +57,50 @@ final class CustomListViewModel: ObservableObject {
             self.restaurants[idx].snoozedUntil = Calendar.current.date(byAdding: .day, value: 30, to: Date())
             self.save()
         }
+
+        // Whenever the weekly cache lands, fill in any sparse rows the user
+        // saved from My Bookings (id + name + photo only). Matches by id.
+        // `WeeklyRestaurantService` is @MainActor — hop the publisher subscription
+        // onto the main actor before observing.
+        Task { @MainActor [weak self] in
+            self?.weeklyCancellable = WeeklyRestaurantService.shared.$status
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] status in
+                    let weekly: [WeeklyRestaurant]
+                    switch status {
+                    case .ready(let l), .stale(let l): weekly = l
+                    default: return
+                    }
+                    self?.hydrateSparseRows(from: weekly)
+                }
+        }
+    }
+
+    /// Replace rows that are missing core fields (no address, no XHS sources,
+    /// no booking URL) with the richer record from the weekly cache when an id
+    /// match is available. Preserves the user's `isCustom`, `notes`,
+    /// `addedAt`, and `snoozedUntil`. No-op when nothing changes.
+    private func hydrateSparseRows(from weekly: [WeeklyRestaurant]) {
+        var changed = false
+        for (idx, existing) in restaurants.enumerated() {
+            let isSparse = existing.address.isEmpty
+                && (existing.xhsSources?.isEmpty ?? true)
+                && existing.bookingUrl == nil
+                && existing.googlePlaceId == nil
+            guard isSparse else { continue }
+            guard let match = weekly.first(where: {
+                $0.id.caseInsensitiveCompare(existing.id.uuidString) == .orderedSame
+            }) else { continue }
+            var hydrated = match.toRestaurant()
+            hydrated.id = existing.id
+            hydrated.isCustom = true
+            hydrated.notes = existing.notes
+            hydrated.snoozedUntil = existing.snoozedUntil
+            hydrated.addedAt = existing.addedAt
+            restaurants[idx] = hydrated
+            changed = true
+        }
+        if changed { save() }
     }
 
     func addFromDiscovery(_ restaurant: Restaurant) {
@@ -49,6 +113,7 @@ final class CustomListViewModel: ObservableObject {
         saved.isCustom = true
         restaurants.insert(saved, at: 0)
         save()
+        Task { await FavoritesService.shared.push(saved) }
     }
 
     // MARK: - Persistence
@@ -59,7 +124,7 @@ final class CustomListViewModel: ObservableObject {
         restaurants = list
     }
 
-    private func save() {
+    func save() {
         guard let data = try? JSONEncoder().encode(restaurants) else { return }
         UserDefaults.standard.set(data, forKey: storageKey)
     }
@@ -107,6 +172,7 @@ final class CustomListViewModel: ObservableObject {
             notes: notes.isEmpty ? nil : notes
         )
 
+        let pushed: Restaurant
         if let existingIdx = restaurants.firstIndex(where: {
             normalize($0.name) == normalize(editedName) ||
             ($0.coordinates.latitude != 0 && distance($0.coordinates, coords) < 50)
@@ -116,21 +182,35 @@ final class CustomListViewModel: ObservableObject {
                 existing.sourceLinks.append(draft.sourceLink)
             }
             restaurants[existingIdx] = existing
+            pushed = existing
         } else {
             restaurants.insert(restaurant, at: 0)
+            pushed = restaurant
         }
         save()
+        Task { await FavoritesService.shared.push(pushed) }
         importDraft = nil
         showImportPreview = false
     }
 
     func confirmXhsImport() {
+        let beforeCount = restaurants.count
         for index in selectedDraftIndices.sorted() {
             guard index < importDrafts.count else { continue }
             let draft = importDrafts[index]
             addRestaurantFromDraft(draft)
         }
         save()
+        // Push every newly-inserted row to the server. `addRestaurantFromDraft`
+        // inserts at the front so the new ones are the prefix relative to
+        // `beforeCount`. Skipped rows (dup `googlePlaceId`) don't appear here.
+        let added = max(0, restaurants.count - beforeCount)
+        let toPush = Array(restaurants.prefix(added))
+        Task {
+            for r in toPush {
+                await FavoritesService.shared.push(r)
+            }
+        }
         importDrafts = []
         selectedDraftIndices = []
         showXhsImportPreview = false
@@ -202,10 +282,19 @@ final class CustomListViewModel: ObservableObject {
     // MARK: - CRUD
 
     func delete(at offsets: IndexSet) {
+        let removedIds = offsets.compactMap { idx -> UUID? in
+            guard idx < restaurants.count else { return nil }
+            return restaurants[idx].id
+        }
         restaurants = restaurants.enumerated()
             .filter { !offsets.contains($0.offset) }
             .map(\.element)
         save()
+        Task {
+            for id in removedIds {
+                await FavoritesService.shared.remove(restaurantId: id)
+            }
+        }
     }
 
     /// Remove a restaurant from the custom list by id. Used by the detail
@@ -213,7 +302,10 @@ final class CustomListViewModel: ObservableObject {
     func remove(restaurantId: UUID) {
         let before = restaurants.count
         restaurants.removeAll { $0.id == restaurantId }
-        if restaurants.count != before { save() }
+        if restaurants.count != before {
+            save()
+            Task { await FavoritesService.shared.remove(restaurantId: restaurantId) }
+        }
     }
 
     /// True when the restaurant (by id OR by googlePlaceId) is already saved.
@@ -234,6 +326,71 @@ final class CustomListViewModel: ObservableObject {
         guard let idx = restaurants.firstIndex(where: { $0.id == restaurantId }) else { return }
         restaurants[idx].sourceLinks.append(link)
         save()
+    }
+
+    // MARK: - Server sync
+
+    /// Pulls the user's favorites from the backend and reconciles with the
+    /// local list:
+    ///   1. Server entries with a snapshot are inserted / refreshed locally.
+    ///   2. Server entries without a snapshot are dropped in as a sparse row
+    ///      (id + name placeholder); `hydrateSparseRows` fills them when the
+    ///      weekly cache lands.
+    ///   3. Local-only entries (never made it to the server, or saved while
+    ///      offline) are pushed up so the next device will see them.
+    /// Server is authoritative for the *set* of saved ids; conflicts where
+    /// both sides have a snapshot prefer the server's, which wins on a
+    ///  second device the user just signed into.
+    func syncFromServer() async {
+        let serverEntries = await FavoritesService.shared.pullFromServer()
+        let serverIds = Set(serverEntries.map(\.restaurantId))
+
+        await MainActor.run {
+            // 1+2. Apply the server's view of each entry. Local row is kept
+            // when the server has no snapshot (preserves any locally-cached
+            // detail data we already had).
+            for entry in serverEntries {
+                guard let uuid = UUID(uuidString: entry.restaurantId) else { continue }
+                if let snapshot = entry.snapshot {
+                    var copy = snapshot
+                    copy.id = uuid
+                    copy.isCustom = true
+                    if let existingIdx = self.restaurants.firstIndex(where: { $0.id == uuid }) {
+                        let existing = self.restaurants[existingIdx]
+                        copy.notes = copy.notes ?? existing.notes
+                        copy.snoozedUntil = copy.snoozedUntil ?? existing.snoozedUntil
+                        copy.addedAt = existing.addedAt
+                        self.restaurants[existingIdx] = copy
+                    } else {
+                        self.restaurants.insert(copy, at: 0)
+                    }
+                } else if !self.restaurants.contains(where: { $0.id == uuid }) {
+                    // Sparse insert — `hydrateSparseRows` will backfill once
+                    // the weekly cache lands. Address/name will look bare
+                    // until then.
+                    let sparse = Restaurant(
+                        id: uuid,
+                        name: "",
+                        address: "",
+                        coordinates: Coordinates(latitude: 0, longitude: 0),
+                        sourceOrigin: .xhs,
+                        isCustom: true
+                    )
+                    self.restaurants.append(sparse)
+                }
+            }
+
+            // 3. Push local-only rows. `FavoritesService.push` is idempotent
+            // (ON CONFLICT DO UPDATE), so re-pushing a row the server
+            // already has is harmless if a race put us out of sync.
+            let toPush = self.restaurants.filter { !serverIds.contains($0.id.uuidString) }
+            self.save()
+            Task {
+                for r in toPush {
+                    await FavoritesService.shared.push(r)
+                }
+            }
+        }
     }
 
     // MARK: - Helpers

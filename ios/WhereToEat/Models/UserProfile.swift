@@ -52,6 +52,11 @@ struct UserProfile: Codable {
     /// Defaults true; user can hide via Settings → Hide ratings.
     var showRatings: Bool
 
+    /// Manually-entered name used by the Home greeting when no signed-in
+    /// `AuthService.state.displayName` is available — e.g. while the Apple
+    /// Sign-In entitlement is still off (TASKS § P5). Trimmed; nil when blank.
+    var displayName: String?
+
     init(
         dietaryPreferences: [DietaryTag],
         defaultPartySize: Int,
@@ -59,7 +64,8 @@ struct UserProfile: Codable {
         onboardingComplete: Bool,
         showOnlyReservable: Bool = true,
         discoverySources: Set<String> = Self.defaultDiscoverySources,
-        showRatings: Bool = true
+        showRatings: Bool = true,
+        displayName: String? = nil
     ) {
         self.dietaryPreferences = dietaryPreferences
         self.defaultPartySize = defaultPartySize
@@ -68,6 +74,7 @@ struct UserProfile: Codable {
         self.showOnlyReservable = showOnlyReservable
         self.discoverySources = discoverySources
         self.showRatings = showRatings
+        self.displayName = displayName
     }
 
     init(from decoder: Decoder) throws {
@@ -85,6 +92,7 @@ struct UserProfile: Codable {
         // Default true — most users want the rating signal. They can hide
         // via Settings if it feels noisy.
         self.showRatings = try c.decodeIfPresent(Bool.self, forKey: .showRatings) ?? true
+        self.displayName = try c.decodeIfPresent(String.self, forKey: .displayName)
     }
 
     /// Default to all known sources on. As the pipeline learns about a new

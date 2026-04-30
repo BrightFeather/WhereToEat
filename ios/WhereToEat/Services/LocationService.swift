@@ -76,10 +76,20 @@ final class LocationService: ObservableObject {
         delegate.onError = { error in
             print("Location error: \(error)")
         }
+
+        // If permission was already granted on a previous launch, start immediately.
+        // locationManagerDidChangeAuthorization only fires on status *changes*, not on init.
+        let currentStatus = manager.authorizationStatus
+        if currentStatus == .authorizedAlways || currentStatus == .authorizedWhenInUse {
+            startMonitoring()
+            requestOneTimeLocation()
+        } else if currentStatus == .notDetermined {
+            requestPermission()
+        }
     }
 
     func requestPermission() {
-        manager.requestAlwaysAuthorization()
+        manager.requestWhenInUseAuthorization()
     }
 
     func startMonitoring() {

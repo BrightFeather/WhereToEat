@@ -274,6 +274,7 @@ final class DiscoveryService: ObservableObject {
             name: item.name,
             address: item.address,
             coordinates: Coordinates(latitude: item.latitude, longitude: item.longitude),
+            sourceOrigin: .yelp,
             cuisineTags: item.categories.compactMap { CuisineTag(rawValue: $0.lowercased()) },
             photos: item.photos.compactMap { URL(string: $0) },
             rating: item.rating,
@@ -287,9 +288,10 @@ final class DiscoveryService: ObservableObject {
             name: item.name,
             address: item.address ?? "",
             coordinates: Coordinates(latitude: 0, longitude: 0),
+            sourceOrigin: .eater,
             photos: [item.imageUrl].compactMap { $0.flatMap { URL(string: $0) } },
-            notes: item.description,
-            sourceLinks: [SourceLink(platform: .eater, url: URL(string: item.sourceUrl)!)]
+            sourceLinks: [SourceLink(platform: .eater, url: URL(string: item.sourceUrl)!)],
+            notes: item.description
         )
     }
 
@@ -298,10 +300,11 @@ final class DiscoveryService: ObservableObject {
             name: item.name,
             address: item.address ?? "",
             coordinates: Coordinates(latitude: 0, longitude: 0),
+            sourceOrigin: .xhs,
             photos: item.imageUrls.compactMap { URL(string: $0) },
-            notes: item.content,
             sourceLinks: [SourceLink(platform: .xiaohongshu, url: URL(string: item.postUrl)!,
-                                     rawContent: item.content)]
+                                     rawContent: item.content)],
+            notes: item.content
         )
     }
 

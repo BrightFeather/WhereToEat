@@ -1,72 +1,88 @@
 import Foundation
 
 enum Endpoint {
+    // Weekly restaurants (XHS pipeline)
+    case weeklyRestaurants(city: String)
+    case markUnavailable(id: String)
+
+    // City → borough → neighborhood mapping
+    case cityRegions(city: String)
+
     // Places
     case enrichRestaurant(name: String, lat: Double, lng: Double)
-
-    // Reservations
-    case resySearch(venueId: String, dates: [String], partySize: Int)
-    case resyBook(venueId: String, configId: String, paymentMethodId: String?)
-    case opentableSearch(venueId: String, dates: [String], partySize: Int)
-    case opentableBook(venueId: String, slotToken: String, partySize: Int, datetime: String)
-    case tockSearch(venueId: String, dates: [String], partySize: Int)
-    case tockBook(venueId: String, slotId: String, partySize: Int)
 
     // Scrape
     case scrapeXiaohongshu(lat: Double, lng: Double, cuisines: [String])
     case scrapeEater(city: String)
 
-    // Stripe
-    case createPaymentIntent(amount: Int, currency: String, restaurantName: String)
+    // Import
+    case importXhs(url: String)
+
+    // Feedback
+    case submitFeedback(body: [String: Any])
+
+    // Auth — exchange a provider identity token for a verified user id
+    case authLogin(body: [String: Any])
+
+    // User — anonymous device id is attached as X-User-Id by APIClient
+    case userEnsure
+    case userReservationsList
+    case userReservationCreate(body: [String: Any])
+    case userReservationDelete(id: String)
+    case userFavoritesList
+    case userFavoriteAdd(restaurantId: String, snapshot: [String: Any]?)
+    case userFavoriteRemove(restaurantId: String)
+    case userBlocksList
+    case userBlockAdd(restaurantId: String, blockedUntil: String?)
+    case userBlockRemove(restaurantId: String)
 
     var path: String {
         switch self {
+        case .weeklyRestaurants: return "/api/restaurants/weekly"
+        case .markUnavailable(let id): return "/api/restaurants/\(id)/unavailable"
+        case .cityRegions: return "/api/locations"
         case .enrichRestaurant: return "/api/places/enrich"
-        case .resySearch: return "/api/reservations/resy/search"
-        case .resyBook: return "/api/reservations/resy/book"
-        case .opentableSearch: return "/api/reservations/opentable/search"
-        case .opentableBook: return "/api/reservations/opentable/book"
-        case .tockSearch: return "/api/reservations/tock/search"
-        case .tockBook: return "/api/reservations/tock/book"
         case .scrapeXiaohongshu: return "/api/scrape/xiaohongshu"
         case .scrapeEater: return "/api/scrape/eater"
-        case .createPaymentIntent: return "/api/stripe/create-payment-intent"
+        case .importXhs: return "/api/restaurants/import-xhs"
+        case .submitFeedback: return "/api/feedback"
+        case .authLogin: return "/api/auth/login"
+        case .userEnsure: return "/api/user/ensure"
+        case .userReservationsList, .userReservationCreate: return "/api/user/reservations"
+        case .userReservationDelete(let id): return "/api/user/reservations/\(id)"
+        case .userFavoritesList, .userFavoriteAdd, .userFavoriteRemove: return "/api/user/favorites"
+        case .userBlocksList, .userBlockAdd: return "/api/user/blocks"
+        case .userBlockRemove(let rid): return "/api/user/blocks/\(rid)"
         }
     }
 
     var method: String {
         switch self {
-        case .enrichRestaurant, .resySearch, .opentableSearch, .tockSearch,
-             .scrapeXiaohongshu, .scrapeEater:
+        case .weeklyRestaurants, .enrichRestaurant, .scrapeXiaohongshu, .scrapeEater, .cityRegions:
             return "GET"
-        case .resyBook, .opentableBook, .tockBook, .createPaymentIntent:
+        case .userReservationsList, .userFavoritesList, .userBlocksList:
+            return "GET"
+        case .markUnavailable:
+            return "PATCH"
+        case .importXhs, .authLogin, .userEnsure, .userReservationCreate, .userFavoriteAdd, .userBlockAdd, .submitFeedback:
             return "POST"
+        case .userReservationDelete, .userFavoriteRemove, .userBlockRemove:
+            return "DELETE"
         }
     }
 
     var queryItems: [URLQueryItem]? {
         switch self {
+        case .weeklyRestaurants(let city):
+            return [URLQueryItem(name: "city", value: city)]
+        case .cityRegions(let city):
+            return [URLQueryItem(name: "city", value: city)]
         case .enrichRestaurant(let name, let lat, let lng):
             return [
                 URLQueryItem(name: "name", value: name),
                 URLQueryItem(name: "lat", value: "\(lat)"),
                 URLQueryItem(name: "lng", value: "\(lng)")
             ]
-        case .resySearch(let venueId, let dates, let partySize):
-            var items = [URLQueryItem(name: "venueId", value: venueId),
-                         URLQueryItem(name: "partySize", value: "\(partySize)")]
-            dates.forEach { items.append(URLQueryItem(name: "dates[]", value: $0)) }
-            return items
-        case .opentableSearch(let venueId, let dates, let partySize):
-            var items = [URLQueryItem(name: "venueId", value: venueId),
-                         URLQueryItem(name: "partySize", value: "\(partySize)")]
-            dates.forEach { items.append(URLQueryItem(name: "dates[]", value: $0)) }
-            return items
-        case .tockSearch(let venueId, let dates, let partySize):
-            var items = [URLQueryItem(name: "venueId", value: venueId),
-                         URLQueryItem(name: "partySize", value: "\(partySize)")]
-            dates.forEach { items.append(URLQueryItem(name: "dates[]", value: $0)) }
-            return items
         case .scrapeXiaohongshu(let lat, let lng, let cuisines):
             var items = [URLQueryItem(name: "lat", value: "\(lat)"),
                          URLQueryItem(name: "lng", value: "\(lng)")]
@@ -74,6 +90,10 @@ enum Endpoint {
             return items
         case .scrapeEater(let city):
             return [URLQueryItem(name: "city", value: city)]
+        case .userFavoriteRemove(let rid):
+            // Backend `api/user/favorites.ts` reads `?restaurantId=…` so we
+            // can keep GET / POST / DELETE on a single function (Hobby cap).
+            return [URLQueryItem(name: "restaurantId", value: rid)]
         default:
             return nil
         }
@@ -81,17 +101,24 @@ enum Endpoint {
 
     var body: [String: Any]? {
         switch self {
-        case .resyBook(let venueId, let configId, let paymentMethodId):
-            var d: [String: Any] = ["venueId": venueId, "configId": configId]
-            if let pm = paymentMethodId { d["paymentMethodId"] = pm }
-            return d
-        case .opentableBook(let venueId, let slotToken, let partySize, let datetime):
-            return ["venueId": venueId, "slotToken": slotToken,
-                    "partySize": partySize, "datetime": datetime]
-        case .tockBook(let venueId, let slotId, let partySize):
-            return ["venueId": venueId, "slotId": slotId, "partySize": partySize]
-        case .createPaymentIntent(let amount, let currency, let restaurantName):
-            return ["amount": amount, "currency": currency, "restaurantName": restaurantName]
+        case .importXhs(let url):
+            return ["url": url]
+        case .submitFeedback(let body):
+            return body
+        case .authLogin(let body):
+            return body
+        case .userEnsure:
+            return [:]
+        case .userReservationCreate(let body):
+            return body
+        case .userFavoriteAdd(let rid, let snapshot):
+            var b: [String: Any] = ["restaurantId": rid]
+            if let snapshot { b["snapshot"] = snapshot }
+            return b
+        case .userBlockAdd(let rid, let until):
+            var b: [String: Any] = ["restaurantId": rid]
+            if let until { b["blockedUntil"] = until }
+            return b
         default:
             return nil
         }

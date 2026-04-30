@@ -25,8 +25,13 @@ struct ImportPreviewView: View {
             Form {
                 Section("Restaurant Info") {
                     if let url = draft.photos.first {
-                        AsyncImage(url: url) { img in img.resizable().scaledToFill() }
-                        placeholder: { Color(.systemGray5) }
+                        CachedAsyncImage(url: url) { phase in
+                            if case .success(let img) = phase {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color(.systemGray5)
+                            }
+                        }
                         .frame(height: 160).clipShape(RoundedRectangle(cornerRadius: 10))
                         .listRowInsets(EdgeInsets())
                     }

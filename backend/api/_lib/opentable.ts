@@ -3,6 +3,55 @@ import { TimeSlot, BookingConfirmation } from './types';
 
 // OpenTable has a public availability widget API
 const BASE = 'https://www.opentable.com/restref/api';
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+export interface OpenTableVenueMatch {
+  rid: number;
+  name: string;
+  bookingUrl: string;
+  neighborhood?: string;
+}
+
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+export async function findVenue(name: string, city: string = 'New York'): Promise<OpenTableVenueMatch | null> {
+  try {
+    const res = await axios.get(`${BASE}/typeahead`, {
+      params: { term: name, latitude: 0, longitude: 0, city },
+      headers: { 'User-Agent': BROWSER_UA, 'Accept': 'application/json' },
+      timeout: 15000,
+    });
+
+    const items = (res.data?.restaurants || res.data?.results || res.data || []) as Record<string, unknown>[];
+    const nameNorm = normalize(name);
+
+    for (const item of items) {
+      const rid = (item.rid || item.id || 0) as number;
+      const rName = (item.name || item.restaurantName || '') as string;
+      const rNorm = normalize(rName);
+
+      const isExact = rNorm === nameNorm;
+      const shorter = Math.min(rNorm.length, nameNorm.length);
+      const longer = Math.max(rNorm.length, nameNorm.length);
+      const isSubstring = (rNorm.includes(nameNorm) || nameNorm.includes(rNorm))
+        && shorter >= longer * 0.6;
+
+      if ((isExact || isSubstring) && (shorter >= 4 || isExact)) {
+        return {
+          rid,
+          name: rName,
+          bookingUrl: `https://www.opentable.com/booking/experiences?rid=${rid}`,
+          neighborhood: (item.neighborhood || '') as string,
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export async function searchAvailability(
   restaurantId: string,

@@ -1,132 +1,70 @@
 import Foundation
-import Combine
 import EventKit
 
 enum ReservationFlowState {
-    case selectingSlot
-    case confirming(TimeSlot)
-    case processingPayment
+    case preBrowser
+    case confirming        // "Did your booking go through?"
     case success(Reservation)
     case failed(String)
-    case noAvailability
 }
 
+@MainActor
 final class ReservationViewModel: ObservableObject {
-    @Published var state: ReservationFlowState = .selectingSlot
-    @Published var availableSlots: [TimeSlot] = []
-    @Published var isLoadingSlots: Bool = false
-    @Published var selectedDates: [Date]
-    @Published var partySize: Int
-    @Published var completedReservation: Reservation?
+    @Published var state: ReservationFlowState = .preBrowser
+    @Published var showSafari: Bool = false
+    @Published var showManualEntry: Bool = false
 
     let restaurant: Restaurant
-    private let reservationService = ReservationService.shared
-    private let paymentService = PaymentService.shared
     private let notificationService = NotificationService.shared
     private let eventStore = EKEventStore()
 
     init(restaurant: Restaurant) {
         self.restaurant = restaurant
-        self.selectedDates = ReservationService.upcomingWeekendDates()
-        self.partySize = UserProfile.load().defaultPartySize
     }
 
-    var slotsByDay: [(date: Date, slots: [TimeSlot])] {
-        let cal = Calendar.current
-        let grouped = Dictionary(grouping: availableSlots) { slot in
-            cal.startOfDay(for: slot.datetime)
-        }
-        return grouped.sorted { $0.key < $1.key }.map { (date: $0.key, slots: $0.value.sorted { $0.datetime < $1.datetime }) }
+    // Called when SFSafariViewController is dismissed
+    func handleBrowserDismissed() {
+        showSafari = false
+        state = .confirming
     }
 
-    // MARK: - Load availability
+    // Called after user confirms booking in ManualBookingEntryView
+    func saveManualBooking(datetime: Date, partySize: Int) async {
+        var reservation = Reservation(
+            restaurantId: restaurant.id,
+            restaurantName: restaurant.name,
+            restaurantPhotoUrl: restaurant.primaryPhotoURL,
+            datetime: datetime,
+            partySize: partySize,
+            confirmationCode: "—",   // user completed booking in browser; no code extracted
+            platform: .other,
+            status: .confirmed
+        )
 
-    func loadAvailability() async {
-        isLoadingSlots = true
-        do {
-            availableSlots = try await reservationService.searchAvailability(
-                restaurant: restaurant,
-                dates: selectedDates,
-                partySize: partySize
-            )
-            if availableSlots.isEmpty { state = .noAvailability }
-        } catch {
-            state = .failed(error.localizedDescription)
-        }
-        isLoadingSlots = false
-    }
+        // Schedule reminder (day before)
+        let notifId = await notificationService.scheduleReservationReminder(
+            for: reservation,
+            restaurantAddress: restaurant.address
+        )
+        reservation.reminderNotificationId = notifId
 
-    // MARK: - Select slot
+        // Add to calendar
+        reservation.calendarEventId = await addToCalendar(reservation: reservation)
 
-    func selectSlot(_ slot: TimeSlot) {
-        state = .confirming(slot)
-    }
+        // Persist in weekly session (local cache — server is source of truth)
+        var session = WeeklySession.load()
+        session.addReservation(reservation)
+        session.save()
 
-    // MARK: - Confirm and book
+        // Fire-and-forget push to backend so Home on another device / re-install
+        // can still show the reservation. Local save already succeeded, so we
+        // don't block the UI on this round-trip.
+        Task { await ReservationService.shared.pushReservation(reservation) }
 
-    func confirmBooking(slot: TimeSlot) async {
-        if slot.depositRequired {
-            await handleDepositAndBook(slot: slot)
-        } else {
-            await bookSlot(slot: slot, paymentMethodId: nil)
-        }
-    }
+        // Tell Home + Bookings list to refresh
+        NotificationCenter.default.post(name: .weeklySessionUpdated, object: nil)
 
-    private func handleDepositAndBook(slot: TimeSlot) async {
-        guard let amount = slot.depositAmount else {
-            await bookSlot(slot: slot, paymentMethodId: nil)
-            return
-        }
-
-        state = .processingPayment
-
-        // Request Apple Pay sheet
-        await withCheckedContinuation { continuation in
-            paymentService.requestApplePayment(amount: amount, restaurantName: restaurant.name) { [weak self] result in
-                Task { @MainActor [weak self] in
-                    switch result {
-                    case .success(let methodId):
-                        await self?.bookSlot(slot: slot, paymentMethodId: methodId)
-                    case .cancelled:
-                        self?.state = .confirming(slot)
-                    case .failed(let error):
-                        self?.state = .failed(error.localizedDescription)
-                    }
-                    continuation.resume()
-                }
-            }
-        }
-    }
-
-    private func bookSlot(slot: TimeSlot, paymentMethodId: String?) async {
-        do {
-            var reservation = try await reservationService.bookSlot(
-                slot: slot,
-                restaurant: restaurant,
-                stripePaymentMethodId: paymentMethodId
-            )
-
-            // Schedule reminder
-            let notifId = await notificationService.scheduleReservationReminder(
-                for: reservation,
-                restaurantAddress: restaurant.address
-            )
-            reservation.reminderNotificationId = notifId
-
-            // Add to calendar
-            let calEventId = await addToCalendar(reservation: reservation)
-            reservation.calendarEventId = calEventId
-
-            // Persist
-            var session = WeeklySession.load()
-            session.addReservation(reservation)
-            session.save()
-
-            completedReservation = reservation
-            state = .success(reservation)
-        } catch {
-            state = .failed(error.localizedDescription)
-        }
+        state = .success(reservation)
     }
 
     // MARK: - Calendar
@@ -136,20 +74,14 @@ final class ReservationViewModel: ObservableObject {
         if status != .authorized {
             guard let _ = try? await eventStore.requestWriteOnlyAccessToEvents() else { return nil }
         }
-
         let event = EKEvent(eventStore: eventStore)
         event.title = reservation.restaurantName
         event.startDate = reservation.datetime
         event.endDate = Calendar.current.date(byAdding: .hour, value: 2, to: reservation.datetime)
         event.location = restaurant.address
-        event.notes = "Confirmation: \(reservation.confirmationCode)\nParty of \(reservation.partySize)"
+        event.notes = "Party of \(reservation.partySize)"
         event.calendar = eventStore.defaultCalendarForNewEvents
-
-        do {
-            try eventStore.save(event, span: .thisEvent)
-            return event.eventIdentifier
-        } catch {
-            return nil
-        }
+        try? eventStore.save(event, span: .thisEvent)
+        return event.eventIdentifier
     }
 }

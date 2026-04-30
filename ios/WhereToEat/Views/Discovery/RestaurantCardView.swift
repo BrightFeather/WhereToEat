@@ -13,21 +13,54 @@ struct RestaurantCardView: View {
 
     /// Cross-source accent shown next to the source badge. Mirrors the rule
     /// in `RestaurantDetailView.sourcesHeaderLabel`:
-    ///   1. If XHS mention count ≥ 3 → "N mentions in 小红书"
-    ///   2. Else if any non-XHS source exists → "Featured in Eater" / "Featured in Resy"
-    ///      (multiple non-XHS → "Featured in Eater + Resy")
-    ///   3. Else nil — single-source XHS card stays clean.
+    ///   1. ≥ 2 source types → "Mentioned on 小红书 and Resy" (extends to
+    ///      "A, B, and C" for any future source).
+    ///   2. Only 小红书, count == 2 → "Mentioned 2 times on 小红书"
+    ///   3. Only 小红书, count ≥ 3 → "Mentioned 3+ times on 小红书"
+    ///   4. Only one non-XHS type → "Featured in Eater" / "Featured in Resy"
+    ///   5. Else nil — single-source single-mention card stays clean.
     private var sourceAccentLabel: String? {
         guard let sources = restaurant.xhsSources, !sources.isEmpty else { return nil }
-        let xhsCount = sources.filter { $0.resolvedType == "xiaohongshu" }.count
-        if xhsCount >= 3 { return "\(xhsCount) mentions on 小红书" }
+        let typeCounts = Dictionary(grouping: sources, by: \.resolvedType)
+            .mapValues(\.count)
+        let presentTypes = Array(typeCounts.keys)
 
-        let others = Set(sources.map(\.resolvedType)).subtracting(["xiaohongshu"])
-        guard !others.isEmpty else { return nil }
-        let names = others.compactMap { DiscoverySource(rawValue: $0)?.shortName }
-            .sorted()
-            .joined(separator: " + ")
-        return "Featured in \(names)"
+        if presentTypes.count >= 2 {
+            let names = presentTypes
+                .map(displayLabel(for:))
+                .sorted()
+            return "Mentioned on \(joinWithAnd(names))"
+        }
+        if let only = presentTypes.first {
+            let count = typeCounts[only] ?? 0
+            if only == "xiaohongshu" {
+                if count >= 3 { return "Mentioned 3+ times on 小红书" }
+                if count == 2 { return "Mentioned 2 times on 小红书" }
+                return nil
+            }
+            return "Featured in \(displayLabel(for: only))"
+        }
+        return nil
+    }
+
+    private func displayLabel(for type: String) -> String {
+        switch type {
+        case "xiaohongshu": return "小红书"
+        case "eater":       return "Eater"
+        case "resy_blog":   return "Resy"
+        default:            return DiscoverySource(rawValue: type)?.shortName ?? type.capitalized
+        }
+    }
+
+    private func joinWithAnd(_ items: [String]) -> String {
+        switch items.count {
+        case 0: return ""
+        case 1: return items[0]
+        case 2: return "\(items[0]) and \(items[1])"
+        default:
+            let head = items.dropLast().joined(separator: ", ")
+            return "\(head), and \(items.last!)"
+        }
     }
 
     var body: some View {
@@ -40,7 +73,7 @@ struct RestaurantCardView: View {
                         .overlay(Image(systemName: "fork.knife").font(.system(size: 60)).foregroundColor(.secondary))
                         .frame(width: geo.size.width, height: geo.size.height)
                 } else if urls.count == 1 {
-                    AsyncImage(url: urls[0]) { phase in
+                    CachedAsyncImage(url: urls[0]) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
                         default: Color(.systemGray5)
@@ -50,7 +83,7 @@ struct RestaurantCardView: View {
                     .clipped()
                 } else {
                     // Show current photo (no TabView — its swipe gesture conflicts with card swiping)
-                    AsyncImage(url: urls[photoIndex % urls.count]) { phase in
+                    CachedAsyncImage(url: urls[photoIndex % urls.count]) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
                         default: Color(.systemGray5)
@@ -121,20 +154,15 @@ struct RestaurantCardView: View {
                                     .clipShape(Capsule())
                             }
                             Spacer()
-                            if let rating = restaurant.rating {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "star.fill").foregroundColor(.yellow).font(.caption)
-                                    Text(String(format: "%.1f", rating))
-                                        .font(.subheadline).fontWeight(.semibold).foregroundColor(.white)
-                                }
-                            }
                         }
 
                         HStack(alignment: .bottom) {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     Text(restaurant.name)
-                                        .font(.title2).fontWeight(.bold).foregroundColor(.white)
+                                        .font(.title2)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
                                         .lineLimit(2)
                                     if UserProfile.load().showRatings, let rating = restaurant.rating {
                                         HStack(spacing: 3) {
@@ -149,6 +177,16 @@ struct RestaurantCardView: View {
                                                     .font(.caption)
                                                     .foregroundColor(.white.opacity(0.8))
                                             }
+                                            if let price = restaurant.priceRange {
+                                                Text("·")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                Text(String(repeating: "$", count: price))
+                                                    .font(.subheadline).fontWeight(.light)
+                                                    .fontWidth(.condensed)
+                                                    .tracking(-0.5)
+                                                    .foregroundColor(.white)
+                                            }
                                         }
                                     }
                                 }
@@ -156,10 +194,6 @@ struct RestaurantCardView: View {
                                 HStack(spacing: 6) {
                                     if let neighborhood = restaurant.neighborhood {
                                         Label(neighborhood, systemImage: "mappin")
-                                            .font(.subheadline).foregroundColor(.white.opacity(0.9))
-                                    }
-                                    if let price = restaurant.priceRange {
-                                        Text(String(repeating: "$", count: price))
                                             .font(.subheadline).foregroundColor(.white.opacity(0.9))
                                     }
                                 }

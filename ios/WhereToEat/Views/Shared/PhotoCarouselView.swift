@@ -15,7 +15,7 @@ struct PhotoCarouselView: View {
         } else {
             TabView(selection: $currentPage) {
                 ForEach(Array(photoURLs.enumerated()), id: \.offset) { index, url in
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
                             image.resizable().scaledToFill()

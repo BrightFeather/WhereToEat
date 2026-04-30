@@ -10,6 +10,10 @@
     "outDir": ".vercel/output",
     "rootDir": "."
   },
-  "include": ["api/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["api/**/*.ts", "scripts/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "scripts/test-pipeline.ts",
+    "scripts/test-weekly.ts"
+  ]
 }

@@ -36,6 +36,7 @@ struct SettingsView: View {
                     CityOverrideView(viewModel: viewModel)
                 }
             }
+            .listRowBackground(Color.homeBgBottom)
 
             Section("Dietary Preferences") {
                 FlowLayout(spacing: 8) {
@@ -63,6 +64,7 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 4)
             }
+            .listRowBackground(Color.homeBgBottom)
 
             Section {
                 Stepper("Default party: \(viewModel.profile.defaultPartySize)",
@@ -82,6 +84,7 @@ struct SettingsView: View {
                      ? "Only restaurants bookable on Resy or OpenTable will appear."
                      : "Unreservable restaurants will show up too. Their card's button becomes \"Go to Website\".")
             }
+            .listRowBackground(Color.homeBgBottom)
 
             Section {
                 ForEach(DiscoverySource.allCases) { source in
@@ -103,6 +106,7 @@ struct SettingsView: View {
                      ? "Pick at least one source — your home and Discovery feed are empty until you do."
                      : "Restaurants must have at least one review from one of the selected sources to appear on Home and Discovery.")
             }
+            .listRowBackground(Color.homeBgBottom)
 
             Section {
                 Toggle("Show Google ratings", isOn: Binding(
@@ -116,16 +120,31 @@ struct SettingsView: View {
                      ? "Restaurant cards show the Google Maps rating (e.g. 4.7★ · 1.2k)."
                      : "Ratings are hidden everywhere — restaurant cards and the detail view.")
             }
+            .listRowBackground(Color.homeBgBottom)
 
             Section("Account") {
                 accountSection
             }
+            .listRowBackground(Color.homeBgBottom)
+
+            Section {
+                NavigationLink {
+                    FeedbackView()
+                } label: {
+                    Label("Send Feedback", systemImage: "envelope")
+                }
+            }
+            .listRowBackground(Color.homeBgBottom)
 
             Section("About") {
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
             }
+            .listRowBackground(Color.homeBgBottom)
         }
+        .scrollContentBackground(.hidden)
+        .background(WarmGradientBackground().ignoresSafeArea())
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
     }
 
     @ViewBuilder
@@ -148,7 +167,7 @@ struct SettingsView: View {
             Button {
                 authGateDismissed = false
             } label: {
-                Label("Sign in with Apple or Google", systemImage: "person.crop.circle.badge.plus")
+                Label("Sign in with Apple", systemImage: "person.crop.circle.badge.plus")
             }
         }
     }

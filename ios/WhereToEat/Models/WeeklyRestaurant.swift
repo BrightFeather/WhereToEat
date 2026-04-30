@@ -70,9 +70,34 @@ struct WeeklyRestaurant: Codable, Identifiable {
     var instagramUrl: String?
     var resyBookingUrl: String?
     var opentableBookingUrl: String?
+    /// WGS84 coordinates from Google Places. Optional — older `xhs_restaurants`
+    /// rows ingested before the migration may have null lat/lng. Find tab
+    /// drops any row without coords from the map; the bottom-sheet list
+    /// shows it but without a marker.
+    var latitude: Double?
+    var longitude: Double?
+    /// Google Places New API `priceLevel` enum
+    /// (`PRICE_LEVEL_INEXPENSIVE`/`MODERATE`/`EXPENSIVE`/`VERY_EXPENSIVE`).
+    /// Render via `priceTier` for $/$$/$$$/$$$$. Null when Places hasn't
+    /// classified the listing.
+    var priceLevel: String?
     /// Every XHS post that mentioned this restaurant (dedupe by post URL,
     /// sorted by likes desc by the backend). Drives the multi-quote card.
     var sources: [XHSSource]?
+
+    /// Maps `priceLevel` enum to a 1–4 integer compatible with
+    /// `Restaurant.priceRange` and its `priceRangeDisplay` helper. Returns
+    /// nil for `PRICE_LEVEL_FREE` / `_UNSPECIFIED` / unknown values so the
+    /// card hides the chip rather than showing "$".
+    var priceTier: Int? {
+        switch priceLevel {
+        case "PRICE_LEVEL_INEXPENSIVE":    return 1
+        case "PRICE_LEVEL_MODERATE":       return 2
+        case "PRICE_LEVEL_EXPENSIVE":      return 3
+        case "PRICE_LEVEL_VERY_EXPENSIVE": return 4
+        default: return nil
+        }
+    }
 
     /// Convert to the unified Restaurant model used by the card deck
     func toRestaurant() -> Restaurant {
@@ -116,7 +141,10 @@ struct WeeklyRestaurant: Codable, Identifiable {
             address: address ?? neighborhood ?? borough ?? "",
             neighborhood: neighborhood,
             borough: borough,
-            coordinates: Coordinates(latitude: 0, longitude: 0),
+            coordinates: Coordinates(
+                latitude:  latitude  ?? 0,
+                longitude: longitude ?? 0
+            ),
             googleMapsLink: googleMapsLink,
             googlePlaceId: googlePlaceId,
             bookingUrl: bookingUrl,
@@ -125,6 +153,7 @@ struct WeeklyRestaurant: Codable, Identifiable {
             rawCuisineType: cuisineType,
             features: features,
             xhsSources: sources,
+            priceRange: priceTier,
             photos: photos,
             rating: googleRating,
             reviewCount: googleUserRatingCount,
@@ -141,4 +170,8 @@ struct WeeklyResponse: Codable {
     var status: String
     var restaurants: [WeeklyRestaurant]?
     var pipelineStartedAt: String?
+    /// Stamp the iOS client uses for `If-None-Match` on subsequent requests.
+    /// Mirrors the `ETag` HTTP response header. Server bumps it whenever any
+    /// `xhs_restaurants` row is touched (Vercel pipeline OR laptop push-data).
+    var etag: String?
 }

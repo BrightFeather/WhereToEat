@@ -53,6 +53,7 @@ final class OnboardingViewModel: ObservableObject {
         profile.defaultPartySize = partySize
         profile.onboardingComplete = true
         profile.save()
+        UserDefaults.standard.set(true, forKey: "onboarding_complete")
 
         Task {
             await notificationService.scheduleWeeklyTriggers()

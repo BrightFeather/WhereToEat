@@ -28,15 +28,6 @@ final class PaymentService: NSObject, ObservableObject {
 
     private let merchantId = "merchant.com.wheretoeat.app" // Set in Xcode Signing & Capabilities
 
-    // MARK: - Create payment intent (server-side)
-
-    func createPaymentIntent(amount: Decimal, restaurantName: String) async throws -> PaymentIntentResponse {
-        let cents = NSDecimalNumber(decimal: amount * 100).intValue
-        return try await api.request(
-            .createPaymentIntent(amount: cents, currency: "usd", restaurantName: restaurantName)
-        )
-    }
-
     // MARK: - Apple Pay sheet
 
     func requestApplePayment(

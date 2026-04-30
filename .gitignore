@@ -1,4 +1,20 @@
 .DS_Store
-.claude/settings.local.json
+.claude/
+.ralph/
+.ralphrc
 *.xcuserstate
 xcuserdata/
+DerivedData/
+
+# iOS build artifacts
+build/
+*.xcarchive
+*.ipa
+*.p8
+AuthKey_*.p8
+scripts/ios/.env
+
+# .env anywhere — never commit secrets
+.env
+.env.local
+.env.*.local

@@ -1,130 +1,144 @@
 import SwiftUI
+import SafariServices
 
-struct AvailabilityView: View {
-    @StateObject var viewModel: ReservationViewModel
-    @Environment(\.dismiss) private var dismiss
+// MARK: - Safari presenter (UIKit-direct, bypasses SwiftUI modal stack)
 
-    private let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE, MMM d"
-        return f
-    }()
-    private let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.timeStyle = .short
-        return f
-    }()
+/// Presents SFSafariViewController directly on the topmost UIViewController.
+/// Why: presenting Safari via SwiftUI .sheet/.fullScreenCover *inside* another
+/// .sheet causes iOS to cascade-dismiss the outer sheet when Safari closes,
+/// wiping the ConfirmBookingForm. Routing through UIKit keeps the SwiftUI
+/// modal hierarchy untouched.
+enum SafariPresenter {
+    private static var activeDelegate: SafariDelegate?
+
+    static func present(url: URL, onDismiss: @escaping () -> Void) {
+        guard let top = topViewController() else { return }
+        let vc = SFSafariViewController(url: url)
+        let delegate = SafariDelegate {
+            activeDelegate = nil
+            onDismiss()
+        }
+        activeDelegate = delegate
+        vc.delegate = delegate
+        vc.modalPresentationStyle = .fullScreen
+        top.present(vc, animated: true)
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        guard let window = scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first,
+              var top = window.rootViewController else { return nil }
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
+    private final class SafariDelegate: NSObject, SFSafariViewControllerDelegate {
+        let onDismiss: () -> Void
+        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
+        func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+            onDismiss()
+        }
+    }
+}
+
+// MARK: - Unified confirm-booking form (date + party size inline)
+
+/// Shown after the user closes Safari. Pre-fills the restaurant name and
+/// asks for date + party size; tapping Save persists locally, pushes to the
+/// backend, and transitions `ReservationViewModel.state` to `.success`.
+struct ConfirmBookingForm: View {
+    @ObservedObject var viewModel: ReservationViewModel
+    var onDismiss: () -> Void
+
+    @State private var date: Date = ConfirmBookingForm.defaultDate()
+    @State private var partySize: Int = UserProfile.load().defaultPartySize
+    @State private var isSaving: Bool = false
+
+    /// Default reservation datetime: next Saturday at 7:30 PM.
+    private static func defaultDate() -> Date {
+        let cal = Calendar.current
+        var components = cal.dateComponents([.year, .month, .day, .weekday], from: Date())
+        let daysUntilSaturday = (7 - (components.weekday ?? 1) + 7) % 7
+        let days = daysUntilSaturday == 0 ? 7 : daysUntilSaturday
+        let base = cal.date(byAdding: .day, value: days, to: Date()) ?? Date()
+        components = cal.dateComponents([.year, .month, .day], from: base)
+        components.hour = 19
+        components.minute = 30
+        return cal.date(from: components) ?? Date()
+    }
 
     var body: some View {
-        Group {
-            switch viewModel.state {
-            case .selectingSlot:
-                slotSelectionView
-            case .confirming(let slot):
-                ReservationConfirmView(slot: slot, viewModel: viewModel)
-            case .processingPayment:
-                processingView
-            case .success(let reservation):
-                ReservationSuccessView(reservation: reservation, restaurant: viewModel.restaurant) {
-                    dismiss()
-                }
-            case .failed(let message):
-                errorView(message)
-            case .noAvailability:
-                noAvailabilityView
-            }
-        }
-        .navigationTitle(viewModel.restaurant.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel.loadAvailability() }
-    }
-
-    private var slotSelectionView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Party size + date controls
+        Form {
+            Section {
                 HStack {
-                    Label("Party size", systemImage: "person.2")
+                    Image(systemName: "fork.knife")
+                        .foregroundColor(.accentColor)
+                    Text(viewModel.restaurant.name)
+                        .font(.headline)
                     Spacer()
-                    Stepper("\(viewModel.partySize)", value: $viewModel.partySize, in: 1...20)
-                        .onChange(of: viewModel.partySize) { _, _ in
-                            Task { await viewModel.loadAvailability() }
-                        }
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            } header: {
+                Text("Restaurant")
+            } footer: {
+                Text("Set the date, time, and party size for your reservation. We'll save it and remind you the day before.")
+            }
+            .listRowBackground(Color.homeBgBottom)
 
-                if viewModel.isLoadingSlots {
-                    HStack { Spacer(); ProgressView("Checking availability…"); Spacer() }
-                        .padding()
-                } else {
-                    ForEach(viewModel.slotsByDay, id: \.date) { group in
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(dayFormatter.string(from: group.date))
-                                .font(.headline)
+            Section("Reservation details") {
+                DatePicker(
+                    "Date & Time",
+                    selection: $date,
+                    in: Date()...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                Stepper("Party size: \(partySize)", value: $partySize, in: 1...20)
+            }
+            .listRowBackground(Color.homeBgBottom)
 
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
-                                ForEach(group.slots) { slot in
-                                    Button { viewModel.selectSlot(slot) } label: {
-                                        VStack(spacing: 2) {
-                                            Text(timeFormatter.string(from: slot.datetime))
-                                                .font(.subheadline).fontWeight(.medium)
-                                            if slot.depositRequired {
-                                                Text("Deposit")
-                                                    .font(.caption2).foregroundColor(.orange)
-                                            }
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(Color.accentColor.opacity(0.08))
-                                        .foregroundColor(.accentColor)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.3)))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+            Section {
+                Button(action: save) {
+                    HStack {
+                        Spacer()
+                        if isSaving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Save booking")
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
                         }
+                        Spacer()
                     }
                 }
+                .listRowBackground(Color.green)
+                .disabled(isSaving)
+
+                Button(role: .destructive) {
+                    onDismiss()
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("I didn't end up booking")
+                        Spacer()
+                    }
+                }
+                .listRowBackground(Color.homeBgBottom)
+                .disabled(isSaving)
             }
-            .padding()
         }
+        .scrollContentBackground(.hidden)
+        .background(WarmGradientBackground().ignoresSafeArea())
     }
 
-    private var processingView: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-            Text("Processing payment…").foregroundColor(.secondary)
+    private func save() {
+        isSaving = true
+        Task {
+            await viewModel.saveManualBooking(datetime: date, partySize: partySize)
+            isSaving = false
         }
-    }
-
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 20) {
-            Image(systemName: "exclamationmark.circle").font(.system(size: 50)).foregroundColor(.red)
-            Text("Something went wrong").font(.title3).fontWeight(.semibold)
-            Text(message).foregroundColor(.secondary).multilineTextAlignment(.center)
-            Button("Try again") {
-                viewModel.state = .selectingSlot
-                Task { await viewModel.loadAvailability() }
-            }
-            .buttonStyle(.bordered)
-            Button("Back to restaurants") { dismiss() }
-                .foregroundColor(.secondary)
-        }
-        .padding()
-    }
-
-    private var noAvailabilityView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "calendar.badge.exclamationmark").font(.system(size: 50)).foregroundColor(.orange)
-            Text("No availability").font(.title3).fontWeight(.semibold)
-            Text("There are no open slots for your selected dates. Try adjusting the party size or check back later.")
-                .foregroundColor(.secondary).multilineTextAlignment(.center)
-            Button("Back to restaurants") { dismiss() }
-                .buttonStyle(.bordered)
-        }
-        .padding()
     }
 }

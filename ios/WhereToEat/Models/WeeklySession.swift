@@ -84,4 +84,44 @@ struct WeeklySession: Codable, Identifiable {
         fmt.formatOptions = [.withFullDate]
         return fmt.string(from: date)
     }
+
+    /// Remove a reservation by id from *every* saved weekly session.
+    /// Returns the removed reservation (if any) so callers can cancel its
+    /// reminder / calendar event without an extra lookup.
+    @discardableResult
+    static func removeReservation(id: UUID) -> Reservation? {
+        let defaults = UserDefaults.standard
+        var removed: Reservation?
+        for (key, _) in defaults.dictionaryRepresentation() where key.hasPrefix(keyPrefix) {
+            guard let data = defaults.data(forKey: key),
+                  var session = try? JSONDecoder().decode(WeeklySession.self, from: data) else {
+                continue
+            }
+            guard let idx = session.reservations.firstIndex(where: { $0.id == id }) else {
+                continue
+            }
+            if removed == nil { removed = session.reservations[idx] }
+            session.reservations.remove(at: idx)
+            session.save()
+        }
+        return removed
+    }
+
+    /// Reservations across *every* saved weekly session, deduplicated by id.
+    /// Bookings can live in any week bucket (a booking made today for next
+    /// Saturday is stored under next Monday's key), so anything that wants
+    /// "all the user's reservations" must aggregate across buckets.
+    static func allReservations() -> [Reservation] {
+        let defaults = UserDefaults.standard
+        var all: [Reservation] = []
+        for (key, _) in defaults.dictionaryRepresentation() where key.hasPrefix(keyPrefix) {
+            guard let data = defaults.data(forKey: key),
+                  let session = try? JSONDecoder().decode(WeeklySession.self, from: data) else {
+                continue
+            }
+            all.append(contentsOf: session.reservations)
+        }
+        var seen = Set<UUID>()
+        return all.filter { seen.insert($0.id).inserted }
+    }
 }

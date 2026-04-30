@@ -1,0 +1,14 @@
+# Local-only files — never ship to Vercel
+data/
+.env
+.env.local
+.env.*.local
+
+# Dev/migration scripts (used locally only)
+scripts/
+
+# Tests, IDE, OS junk
+*.test.ts
+.vscode/
+.idea/
+.DS_Store

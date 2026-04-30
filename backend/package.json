@@ -3,17 +3,36 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "vercel dev",
-    "build": "tsc --noEmit"
+    "dev": "echo 'No framework dev server — functions are served by vercel dev directly'",
+    "start": "ts-node scripts/local-server.ts",
+    "migrate": "ts-node scripts/migrate.ts",
+    "migrate:cloud": "ts-node scripts/migrate-cloud.ts",
+    "push-data": "ts-node scripts/sqlite-to-neon.ts",
+    "push-photos": "ts-node scripts/upload-photos.ts",
+    "migrate-places-photos": "ts-node scripts/migrate-places-photos.ts",
+    "backfill-coords": "ts-node scripts/backfill-coords.ts",
+    "backfill-price": "ts-node scripts/backfill-price-level.ts",
+    "reset-deck": "bash scripts/reset-deck.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "@google/generative-ai": "^0.24.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.3.3",
     "axios": "^1.6.0",
+    "better-sqlite3": "^12.8.0",
     "cheerio": "^1.0.0",
+    "dotenv": "^17.3.1",
+    "js-yaml": "^4.1.1",
     "stripe": "^14.0.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
     "@vercel/node": "^3.0.0",
+    "playwright": "^1.59.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   }
 }

@@ -42,18 +42,63 @@ function resyHeaders(token: string) {
   };
 }
 
-export async function findVenueId(name: string, lat: number, lng: number): Promise<string | null> {
+export interface ResyVenueMatch {
+  venueId: string;
+  name: string;
+  urlSlug: string;
+  citySlug: string;
+  bookingUrl: string;
+  neighborhood?: string;
+  address?: string;
+}
+
+export async function findVenue(name: string, lat: number, lng: number): Promise<ResyVenueMatch | null> {
   const token = await getToken();
+  const today = new Date().toISOString().split('T')[0];
   try {
-    const res = await axios.get(`${BASE}/3/venuesearch`, {
-      headers: resyHeaders(token),
-      params: { query: name, lat, long: lng },
+    const res = await axios.get(`${BASE}/4/find`, {
+      headers: {
+        ...resyHeaders(token),
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Origin': 'https://resy.com',
+        'Referer': 'https://resy.com/',
+        'X-Origin': 'https://resy.com',
+        'Cache-Control': 'no-cache',
+      },
+      params: { lat, long: lng, day: today, party_size: 2 },
     });
-    const venues = res.data.search?.hits ?? [];
-    return venues[0]?.id?.resy ?? null;
+    const venues = res.data.results?.venues ?? [];
+    const nameLower = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const match = venues.find((v: any) => {
+      const vName = (v.venue?.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return vName === nameLower || vName.includes(nameLower) || nameLower.includes(vName);
+    });
+    if (!match) return null;
+    const venue = match.venue;
+    const venueId = typeof venue.id === 'object' ? venue.id.resy : venue.id;
+    const urlSlug = venue.url_slug ?? '';
+    const citySlug = venue.location?.url_slug ?? '';
+    return {
+      venueId: String(venueId),
+      name: venue.name,
+      urlSlug,
+      citySlug,
+      bookingUrl: urlSlug && citySlug
+        ? `https://resy.com/cities/${citySlug}/venues/${urlSlug}`
+        : `https://resy.com/cities/new-york-ny/venues/${venueId}`,
+      neighborhood: venue.neighborhood,
+      address: venue.location?.address_1,
+    };
   } catch {
     return null;
   }
+}
+
+/** @deprecated Use findVenue instead */
+export async function findVenueId(name: string, lat: number, lng: number): Promise<string | null> {
+  const match = await findVenue(name, lat, lng);
+  return match?.venueId ?? null;
 }
 
 export async function searchAvailability(

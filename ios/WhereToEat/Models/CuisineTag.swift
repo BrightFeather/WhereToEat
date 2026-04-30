@@ -15,6 +15,9 @@ enum CuisineTag: String, Codable, CaseIterable, Identifiable {
     case spanish = "spanish"
     case middleEastern = "middle_eastern"
     case peruvian = "peruvian"
+    case latinAmerican = "latin_american"
+    case caribbean = "caribbean"
+    case african = "african"
     case other = "other"
 
     var id: String { rawValue }
@@ -35,8 +38,22 @@ enum CuisineTag: String, Codable, CaseIterable, Identifiable {
         case .spanish: return "Spanish"
         case .middleEastern: return "Middle Eastern"
         case .peruvian: return "Peruvian"
+        case .latinAmerican: return "Latin American"
+        case .caribbean: return "Caribbean"
+        case .african: return "African"
         case .other: return "Other"
         }
+    }
+
+    static func from(string: String?) -> [CuisineTag] {
+        guard let string, !string.isEmpty else { return [] }
+        let lower = string.lowercased()
+        if let exact = CuisineTag(rawValue: lower) { return [exact] }
+        // Try matching by display name
+        for tag in CuisineTag.allCases {
+            if lower.contains(tag.displayName.lowercased()) { return [tag] }
+        }
+        return []
     }
 
     var emoji: String {
@@ -55,6 +72,9 @@ enum CuisineTag: String, Codable, CaseIterable, Identifiable {
         case .spanish: return "🥘"
         case .middleEastern: return "🧆"
         case .peruvian: return "🫑"
+        case .latinAmerican: return "💃"
+        case .caribbean: return "🌴"
+        case .african: return "🫘"
         case .other: return "🍴"
         }
     }

@@ -20,6 +20,7 @@ struct Reservation: Codable, Identifiable, Equatable {
     var id: UUID
     var restaurantId: UUID
     var restaurantName: String
+    var restaurantPhotoUrl: URL?
     var datetime: Date
     var partySize: Int
     var confirmationCode: String
@@ -36,6 +37,7 @@ struct Reservation: Codable, Identifiable, Equatable {
         id: UUID = UUID(),
         restaurantId: UUID,
         restaurantName: String,
+        restaurantPhotoUrl: URL? = nil,
         datetime: Date,
         partySize: Int,
         confirmationCode: String,
@@ -51,6 +53,7 @@ struct Reservation: Codable, Identifiable, Equatable {
         self.id = id
         self.restaurantId = restaurantId
         self.restaurantName = restaurantName
+        self.restaurantPhotoUrl = restaurantPhotoUrl
         self.datetime = datetime
         self.partySize = partySize
         self.confirmationCode = confirmationCode
