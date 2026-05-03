@@ -247,7 +247,7 @@ struct RestaurantCardView: View {
     private var swipeIndicatorOverlay: some View {
         ZStack {
             // Like — top-left
-            Text("🔥")
+            Text("❤️")
                 .font(.system(size: 52))
                 .padding(12)
                 .background(.ultraThinMaterial)

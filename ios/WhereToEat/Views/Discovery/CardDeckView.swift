@@ -216,7 +216,7 @@ struct CardDeckView: View {
                     }
                 }
             } label: {
-                Text("🔥")
+                Text("❤️")
                     .font(.title)
                     .frame(width: 72, height: 72)
                     .background(
