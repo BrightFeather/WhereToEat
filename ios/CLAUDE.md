@@ -50,6 +50,24 @@ xcrun simctl io        <UDID> screenshot /tmp/out.png
 
 There is no test target yet — visual validation in the simulator is the current QA loop.
 
+## Release to TestFlight
+
+One-command pipeline at `scripts/ios/testflight.sh` (run from the repo root):
+
+```bash
+./scripts/ios/testflight.sh
+```
+
+It bumps `CURRENT_PROJECT_VERSION` (build number), archives, exports `.ipa`, validates, and uploads via `xcrun altool`. **Never touches `MARKETING_VERSION`** — that's a deliberate human edit (in `project.pbxproj`).
+
+Required env (auto-loaded from `scripts/ios/.env`, gitignored):
+- `ASC_KEY_ID`, `ASC_ISSUER_ID` — App Store Connect API key
+- `~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8` (the matching `.p8`, chmod 600)
+
+The export step passes `-authenticationKeyPath` / `-authenticationKeyID` / `-authenticationKeyIssuerID` directly so it works without a logged-in Apple ID in Xcode (the cached Xcode-Token expires silently every few weeks). Don't drop those flags.
+
+**If a step fails after the build-number bump,** re-run only the failed step (export or upload) manually — re-running the whole script burns another (skipped) build number on ASC. See `~/.claude/projects/.../memory/project_testflight_pipeline.md` for the failure recipes.
+
 ## Architecture — load-bearing flows
 
 ### App entry → Home

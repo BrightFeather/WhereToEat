@@ -117,14 +117,28 @@ struct CustomListView: View {
 struct CustomRestaurantRowView: View {
     let restaurant: Restaurant
 
-    /// Distinct platforms across `sourceLinks`, in stable display order:
-    /// 小红书 first, then editorial sources, then generic web sources. The
-    /// underlying array often holds many XHS posts for the same restaurant
-    /// — we collapse them so the row shows each platform at most once.
-    private var distinctPlatforms: [SourcePlatform] {
-        let order: [SourcePlatform] = [.xiaohongshu, .eater, .yelp, .google, .website, .other]
-        let present = Set(restaurant.sourceLinks.map(\.platform))
-        return order.filter(present.contains)
+    /// Distinct source-type keys for the row, in stable display order:
+    /// 小红书 → Eater → Resy → other web sources. We dedupe across both the
+    /// modern `xhsSources` array (which carries the multi-source schema with
+    /// resolvedType keys like `eater`/`resy_blog`) and the legacy
+    /// `sourceLinks` array (used by user-imported / custom restaurants),
+    /// so a restaurant that appears in both still renders one badge per
+    /// platform instead of two.
+    private var distinctTypeKeys: [String] {
+        let priority = ["xiaohongshu", "eater", "resy_blog", "yelp", "google", "website", "other"]
+        var seen: Set<String> = []
+
+        if let sources = restaurant.xhsSources {
+            for s in sources { seen.insert(s.resolvedType) }
+        }
+        for link in restaurant.sourceLinks {
+            seen.insert(link.platform.rawValue)
+        }
+
+        var ordered = priority.filter { seen.contains($0) }
+        let extras = seen.subtracting(priority).sorted()
+        ordered.append(contentsOf: extras)
+        return ordered
     }
 
     var body: some View {
@@ -139,23 +153,63 @@ struct CustomRestaurantRowView: View {
             .frame(width: 56, height: 56)
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(restaurant.name).font(.body).fontWeight(.medium)
                 if !restaurant.address.isEmpty {
                     Text(restaurant.address).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 }
-                // One badge per distinct platform — the underlying
-                // `sourceLinks` array can carry many XHS posts for the same
-                // restaurant; rendering each was wordy and identical-looking.
-                HStack(spacing: 8) {
-                    ForEach(distinctPlatforms, id: \.rawValue) { platform in
-                        HStack(spacing: 3) {
-                            Image(systemName: "link").font(.caption2).foregroundColor(.accentColor)
-                            Text(platform.displayName).font(.caption2).foregroundColor(.secondary)
-                        }
+                // One colored capsule per distinct platform — same visual
+                // language as the detail page's source quotes (red 小红书,
+                // red Eater, red Resy). Replaces the older "link icon +
+                // platform name" treatment which read more like metadata
+                // than provenance.
+                HStack(spacing: 6) {
+                    ForEach(distinctTypeKeys, id: \.self) { key in
+                        SourceTypeBadgeView(typeKey: key)
                     }
                 }
             }
+        }
+    }
+}
+
+/// Colored capsule badge for a source-type key. Mirrors the badge used
+/// inside `SourceQuoteCard` on `RestaurantDetailView` so the same
+/// platform reads as the same brand wherever it appears.
+private struct SourceTypeBadgeView: View {
+    let typeKey: String
+
+    var body: some View {
+        Text(label)
+            .font(.caption2).fontWeight(.semibold)
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.9))
+            .clipShape(Capsule())
+    }
+
+    private var label: String {
+        switch typeKey {
+        case "xiaohongshu":       return "小红书"
+        case "eater":             return "Eater"
+        case "resy_blog", "resy": return "Resy"
+        case "yelp":              return "Yelp"
+        case "google":            return "Google"
+        case "website":           return "Web"
+        case "other":             return "Other"
+        default:                  return typeKey.capitalized
+        }
+    }
+
+    private var color: Color {
+        switch typeKey {
+        case "xiaohongshu":       return Color(red: 1, green: 0.14, blue: 0.26)
+        case "eater":             return Color(red: 0.91, green: 0.20, blue: 0.11)
+        case "resy_blog", "resy": return Color(red: 0.83, green: 0.14, blue: 0.14)
+        case "yelp":              return Color(red: 0.83, green: 0.14, blue: 0.14)
+        case "google":            return Color(red: 0.20, green: 0.40, blue: 0.95)
+        default:                  return .gray
         }
     }
 }

@@ -1,0 +1,70 @@
+name: feedback-agent
+
+# Phase 4 cron: runs daily at 06:00 America/New_York (10:00 UTC during DST,
+# 11:00 UTC outside DST — pick one and accept the seasonal hour drift).
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  run:
+    # macos-latest is required so xcodebuild can verify iOS-touching PRs.
+    # If cost becomes a problem, split into a Linux job for non-iOS feedback.
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: feedback-agent/package-lock.json
+
+      - name: Install deps
+        working-directory: feedback-agent
+        run: npm ci
+
+      - name: Materialize Gmail OAuth secrets to disk
+        working-directory: feedback-agent
+        env:
+          GMAIL_OAUTH_CLIENT_JSON: ${{ secrets.GMAIL_OAUTH_CLIENT_JSON }}
+          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
+        run: |
+          umask 077
+          printf '%s' "$GMAIL_OAUTH_CLIENT_JSON" > gmail-oauth-client.json
+          printf '%s' "$GMAIL_TOKEN_JSON" > gmail-token.json
+
+      - name: Configure git author
+        run: |
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+          git config --global user.name "${{ github.actor }}"
+
+      - name: Authenticate gh CLI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh auth status
+
+      - name: Run feedback-agent
+        working-directory: feedback-agent
+        env:
+          DEEP_SEEK_API: ${{ secrets.DEEP_SEEK_API }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run run
+
+      - name: Cleanup secret files
+        if: always()
+        working-directory: feedback-agent
+        run: |
+          rm -f gmail-oauth-client.json gmail-token.json

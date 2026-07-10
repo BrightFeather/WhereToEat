@@ -361,7 +361,7 @@ CREATE INDEX idx_import_jobs_user_status ON import_jobs(user_id, status);
 The handler returns the synchronous response, then keeps the function alive via `event.waitUntil(processJob(jobId))`. Inside `processJob`:
 
 1. **read** — `readNote()` (CLI locally, HTTP fallback on Vercel). Update `note_title`, set `status = 'extracting'`. On captcha/auth failure → `status = 'failed'`, `error = 'xhs_blocked'`.
-2. **extract** — Gemini batch → array of `{ name, address?, recommendation }`. Set `expected_total`, `status = 'matching'`.
+2. **extract** — DeepSeek-V4-Pro batch → array of `{ name, address?, recommendation }` plus a per-post `hasComplaint` flag. If `hasComplaint=true` the entire post is dropped (zero restaurants emitted) — see § Negative-post filter. Set `expected_total`, `status = 'matching'`.
 3. **match** — for each name: Places search → look up `xhs_restaurants` by `google_place_id`. Hits → straight to step 5. Misses → step 4.
 4. **enrich** (only for misses) — full `placesEnricher.enrichRestaurant` + Resy/OpenTable lookup + `@vercel/blob` photo mirror. Insert into `xhs_restaurants`.
 5. **link** — `INSERT … ON CONFLICT (restaurant_id, post_url) DO NOTHING` into `xhs_sources` for every resolved restaurant; append id to `resolved_ids`; bump `mention_count` + `total_likes` on the canonical row.
@@ -449,7 +449,14 @@ UI: a segmented toggle or checkbox group shown on the discovery setup screen. A 
 
 **Deduplication:** all sources merge into one canonical `xhs_restaurants` row keyed by `googlePlaceId` (set during Places enrichment). When the same restaurant appears across multiple sources, a `xhs_sources` row is written per source mention, each with its own verbatim author quote — the card can then show "featured in Resy Hit List + Eater + Xiaohongshu" and the iOS detail view surfaces each quote with its byline.
 
-**Author quote contract:** `xhs_sources.recommendation` stores the author's *verbatim* paragraph about the specific restaurant — not an LLM summary. Resy listicles and Eater heatmaps are extracted **structurally** (no LLM in the loop) — the quote is pulled directly from `.venue2-lead` (Resy) or `p.duet--article--standard-paragraph` (Eater). The LLM (Gemini 2.5 Flash) is only used downstream for cuisine + feature classification.
+**Author quote contract:** `xhs_sources.recommendation` stores the author's *verbatim* paragraph about the specific restaurant — not an LLM summary. Resy listicles and Eater heatmaps are extracted **structurally** (no LLM in the loop) — the quote is pulled directly from `.venue2-lead` (Resy) or `p.duet--article--standard-paragraph` (Eater). The LLM (DeepSeek-V4-Pro as of 2026-05-02; was Gemini 2.5 Flash) is only used downstream for cuisine + feature classification + sentiment.
+
+**Negative-post filter (drop on any complaint).** Every XHS post passes through `classifyComplaint()` before its restaurants are admitted. The classifier is target-aware: a post that praises restaurant A and trashes restaurant B drops only the (B, post) source row — the (A, post) link survives. Aggressive: any criticism, mixed review, lukewarm endorsement ("just okay", "fine"), warning ("avoid"), or "X not as good as Y" (where target is X) → drop. Pure-positive only → keep. Failure mode is fail-closed (LLM error → drop). Same rule applies to:
+- The weekly pipeline (`scripts/test-pipeline.ts`) via `extractRestaurantData()`'s `hasComplaint` field
+- Per-restaurant top-up runs (`npm run topup-asian`)
+- One-shot backfill (`npm run scrub-negative`) which deletes pre-existing negative source rows on both SQLite and Neon
+
+This rule was introduced 2026-05-02 after a Shiki Omakase post (`人均两百的omakase，创作者表示以后再也不会去`) was found in the deck.
 
 **Ranking:**
 1. User's own list (always surfaced first)
@@ -706,7 +713,7 @@ vercel --prod --yes    # deploy
 SQLite at `backend/data/wheretoeat.db` is the dev source of truth — write/test there first, then push.
 
 **Vercel env vars.**
-- Set (production, as of 2026-04-28): `GOOGLE_PLACES_API_KEY`, `YELP_API_KEY`, `RESY_EMAIL`; Neon `WHERE_TO_EAT_DATABASE_URL` + family (auto-injected); Blob `RESTAURANT_PHOTOS_READ_WRITE_TOKEN` (auto-injected); `LLM_API_KEY` (Gemini 2.5 Flash); `CRON_SECRET`; `XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID` (sourced from `~/.xiaohongshu-cli/cookies.json` — see memory `project_xhs_vercel_auth.md`).
+- Set (production, as of 2026-05-02): `GOOGLE_PLACES_API_KEY`, `YELP_API_KEY`, `RESY_EMAIL`; Neon `WHERE_TO_EAT_DATABASE_URL` + family (auto-injected); Blob `RESTAURANT_PHOTOS_READ_WRITE_TOKEN` (auto-injected); `DEEP_SEEK_API` (DeepSeek-V4-Pro — was Gemini's `LLM_API_KEY`); optional `DEEPSEEK_MODEL` override; `CRON_SECRET`; `XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID` (sourced from `~/.xiaohongshu-cli/cookies.json` — see memory `project_xhs_vercel_auth.md`).
 - **Still missing** (only needed if endpoints below are reactivated): `LLM_MODEL` (defaults to `gemini-2.5-flash` if unset), `RESY_PASSWORD` + `ANTHROPIC_API_KEY` (only if reservation/legacy paths come back). Stripe keys — deferred until the deposit flow is restored.
 - **`xsec_token` is single-use.** Each XHS share link carries a token consumed on first read; testing the deployed `import-xhs` requires a fresh token per attempt (pull via `xhs search "纽约美食" --json`). See memory `project_xhs_xsec_token_singleuse.md`.
 
@@ -751,7 +758,7 @@ Restorable by moving back into `backend/api/` and shipping a deploy.
 
 | API | Purpose | Stage 1 | Stage 2 |
 |---|---|---|---|
-| Gemini 2.5 Flash | LLM extraction from XHS posts | ✅ Active | ✅ Active |
+| DeepSeek-V4-Pro (was Gemini 2.5 Flash through 2026-05-01) | LLM extraction + cuisine/feature classification + complaint detection | ✅ Active | ✅ Active (`DEEP_SEEK_API`, base URL `api.deepseek.com`, `thinking: { type: 'disabled' }`) |
 | `xhs` CLI | XHS scraping (subprocess) | ✅ Local default | ⚠️ Fallback only (HTTP scraper preferred on Vercel) |
 | Custom XHS HTTP scraper | SSR `__INITIAL_STATE__` parse + cookie auth | ✅ Fallback | ✅ Default on Vercel — see `xhsScraper.ts::searchViaHttp / readNoteViaHttp` |
 | Google Places API | Enrichment: name, photos, hours | ✅ Active | ✅ Active (`GOOGLE_PLACES_API_KEY`) |

@@ -38,33 +38,39 @@ struct SettingsView: View {
             }
             .listRowBackground(Color.homeBgBottom)
 
-            Section("Dietary Preferences") {
-                FlowLayout(spacing: 8) {
-                    ForEach(DietaryTag.allCases) { tag in
-                        Button {
-                            var prefs = Set(viewModel.profile.dietaryPreferences)
-                            if tag == .noRestrictions {
-                                prefs = [.noRestrictions]
-                            } else {
-                                prefs.remove(.noRestrictions)
-                                if prefs.contains(tag) { prefs.remove(tag) }
-                                else { prefs.insert(tag) }
-                                if prefs.isEmpty { prefs = [.noRestrictions] }
-                            }
-                            viewModel.profile.dietaryPreferences = Array(prefs)
-                            viewModel.saveProfile()
-                        } label: {
-                            TagChipView(
-                                label: "\(tag.emoji) \(tag.displayName)",
-                                isSelected: viewModel.profile.dietaryPreferences.contains(tag)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-            .listRowBackground(Color.homeBgBottom)
+            // Dietary Preferences — commented out per user request
+            // (the data isn't wired into filtering yet, so the section was
+            // taking up space without affecting results). Restore by
+            // uncommenting if/when the filter pipeline starts honoring
+            // `viewModel.profile.dietaryPreferences`.
+            //
+            // Section("Dietary Preferences") {
+            //     FlowLayout(spacing: 8) {
+            //         ForEach(DietaryTag.allCases) { tag in
+            //             Button {
+            //                 var prefs = Set(viewModel.profile.dietaryPreferences)
+            //                 if tag == .noRestrictions {
+            //                     prefs = [.noRestrictions]
+            //                 } else {
+            //                     prefs.remove(.noRestrictions)
+            //                     if prefs.contains(tag) { prefs.remove(tag) }
+            //                     else { prefs.insert(tag) }
+            //                     if prefs.isEmpty { prefs = [.noRestrictions] }
+            //                 }
+            //                 viewModel.profile.dietaryPreferences = Array(prefs)
+            //                 viewModel.saveProfile()
+            //             } label: {
+            //                 TagChipView(
+            //                     label: "\(tag.emoji) \(tag.displayName)",
+            //                     isSelected: viewModel.profile.dietaryPreferences.contains(tag)
+            //                 )
+            //             }
+            //             .buttonStyle(.plain)
+            //         }
+            //     }
+            //     .padding(.vertical, 4)
+            // }
+            // .listRowBackground(Color.homeBgBottom)
 
             Section {
                 Stepper("Default party: \(viewModel.profile.defaultPartySize)",

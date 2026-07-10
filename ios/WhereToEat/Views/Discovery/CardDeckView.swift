@@ -28,18 +28,13 @@ struct CardDeckView: View {
                     emptyDeckView
                     Spacer()
                 } else if !visibleCards.isEmpty {
-                    let cardW = geo.size.width - 40
-                    let cardH = geo.size.height * 0.70
-
-                    // Card counter
-                    HStack(spacing: 4) {
-                        Text("\(viewModel.remainingCount)")
-                            .fontWeight(.bold)
-                        Text(viewModel.remainingCount == 1 ? "spot left" : "spots left")
-                    }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 8)
+                    // Designer pass: tighter horizontal margin so the card
+                    // breathes more horizontally, and a slightly taller
+                    // card-height fraction so the deck dominates the screen
+                    // (was a hero with awkward whitespace below; now a hero
+                    // that earns its space).
+                    let cardW = geo.size.width - 32
+                    let cardH = geo.size.height * 0.74
 
                     ZStack {
                         ForEach(Array(visibleCards.enumerated().reversed()), id: \.element.id) { index, restaurant in
@@ -47,7 +42,11 @@ struct CardDeckView: View {
                             RestaurantCardView(
                                 restaurant: restaurant,
                                 swipeOffset: isTop ? (dragTranslation + swipeOffset) : 0,
-                                lookedAt: lookedAtIds.contains(restaurant.id)
+                                lookedAt: lookedAtIds.contains(restaurant.id),
+                                onOpenDetail: isTop ? {
+                                    lookedAtIds.insert(restaurant.id)
+                                    showDetail = true
+                                } : nil
                             )
                                 .frame(width: cardW, height: cardH)
                                 .clipped()
@@ -56,12 +55,6 @@ struct CardDeckView: View {
                                 .offset(y: isTop ? 0 : CGFloat(index) * 12)
                                 .zIndex(Double(visibleCards.count - index))
                                 .gesture(isTop ? dragGesture : nil)
-                                .onTapGesture {
-                                    if isTop {
-                                        lookedAtIds.insert(restaurant.id)
-                                        showDetail = true
-                                    }
-                                }
                                 .contextMenu {
                                     if isTop {
                                         if restaurant.isCustom {
@@ -83,7 +76,7 @@ struct CardDeckView: View {
                     // Toast
                     if showSavedToast {
                         HStack(spacing: 6) {
-                            Text("saved! 🔖")
+                            Text("saved")
                                 .font(.subheadline).fontWeight(.semibold)
                         }
                         .foregroundColor(.white)
@@ -100,7 +93,8 @@ struct CardDeckView: View {
                     }
 
                     actionButtons
-                        .padding(.bottom, 16 + 49)
+
+                    Spacer()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -158,10 +152,93 @@ struct CardDeckView: View {
     }
 
     private var actionButtons: some View {
-        HStack(spacing: 18) {
-            Spacer()
+        // Layered layout:
+        //   - Rewind floats far-left, Reset floats far-right — they're
+        //     utility actions that shouldn't break the like/dislike rhythm.
+        //   - Pass / Like / Save sit in a centered HStack, equidistant from
+        //     the midline. Like is the visual focal point; pass and save
+        //     mirror each other across it.
+        ZStack {
+            HStack {
+                rewindButton
+                Spacer()
+                resetButton
+            }
+            .padding(.horizontal, 24)
 
-            // Rewind — Tinder-style undo of the most recent swipe.
+            HStack(spacing: 14) {
+                passButton
+                likeButton
+                saveButton
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Caption font + color used for every action-bar label so the row
+    /// reads as one set of buttons.
+    private var actionLabelStyle: (font: Font, color: Color) {
+        (.caption2, .secondary)
+    }
+
+    /// Press feedback for the action-bar circles. While the user has their
+    /// finger down on a button we scale it up and draw an accent ring; on
+    /// release everything snaps back. Replaces SwiftUI's default Button
+    /// highlight (which was rendering an always-on blue rim on the Like
+    /// circle on iOS 17 because `.tint(.accentColor)` propagates from the
+    /// TabView root).
+    private struct PressFeedbackButtonStyle: ButtonStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 1.12 : 1.0)
+                .overlay(
+                    Circle()
+                        .stroke(Color.accentColor.opacity(configuration.isPressed ? 0.7 : 0),
+                                lineWidth: 3)
+                )
+                .animation(.spring(response: 0.25, dampingFraction: 0.6),
+                           value: configuration.isPressed)
+        }
+    }
+
+    private var resetButton: some View {
+        // Reset — clears today's seen set + this week's dislikes/skips/blocks
+        // so previously filtered-out restaurants come back into the deck.
+        // Server-side blocks (4-week) and reservations are NOT touched.
+        // Sized 42pt — smaller than the primary trio (60pt) so the visual
+        // hierarchy reads as "primary actions, secondary utility".
+        VStack(spacing: 4) {
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    viewModel.resetSeenAndDisliked()
+                    lookedAtIds.removeAll()
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundColor(Color(red: 0.20, green: 0.55, blue: 0.95).opacity(0.85))
+                    .frame(width: 42, height: 42)
+                    .background(Color(.systemBackground))
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color(red: 0.20, green: 0.55, blue: 0.95).opacity(0.45),
+                                          lineWidth: 1)
+                    )
+            }
+            .buttonStyle(PressFeedbackButtonStyle())
+            .accessibilityLabel("Reset seen and disliked restaurants")
+
+            Text("reset")
+                .font(actionLabelStyle.font)
+                .foregroundColor(actionLabelStyle.color)
+        }
+    }
+
+    private var rewindButton: some View {
+        // Rewind — Tinder-style undo of the most recent swipe. Sized 42pt to
+        // visually subordinate it to the primary pass/like/save trio (60pt).
+        VStack(spacing: 4) {
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                     viewModel.undoLast()
@@ -171,24 +248,38 @@ struct CardDeckView: View {
                 }
             } label: {
                 Image(systemName: "arrow.uturn.backward")
-                    .font(.title3).fontWeight(.semibold)
-                    .foregroundColor(viewModel.canUndo ? Color(red: 0.95, green: 0.75, blue: 0.10) : Color.secondary.opacity(0.5))
-                    .frame(width: 48, height: 48)
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundColor(viewModel.canUndo
+                                     ? Color(red: 0.95, green: 0.75, blue: 0.10).opacity(0.85)
+                                     : Color.secondary.opacity(0.4))
+                    .frame(width: 42, height: 42)
                     .background(Color(.systemBackground))
                     .clipShape(Circle())
                     .overlay(
                         Circle()
                             .strokeBorder(viewModel.canUndo
-                                          ? Color(red: 0.95, green: 0.75, blue: 0.10).opacity(0.6)
-                                          : Color.secondary.opacity(0.25),
-                                          lineWidth: 1.5)
+                                          ? Color(red: 0.95, green: 0.75, blue: 0.10).opacity(0.45)
+                                          : Color.secondary.opacity(0.2),
+                                          lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
             }
             .disabled(!viewModel.canUndo)
+            .buttonStyle(PressFeedbackButtonStyle())
             .accessibilityLabel("Undo last swipe")
 
-            // Pass
+            Text("undo")
+                .font(actionLabelStyle.font)
+                .foregroundColor(viewModel.canUndo ? actionLabelStyle.color : Color.secondary.opacity(0.5))
+        }
+    }
+
+    /// Pass / Like / Save share the same circular base — same diameter,
+    /// same systemBackground fill, same shadow. Only the emoji differs so
+    /// they read as one row of equal-weight actions. Like used to be larger
+    /// with a gradient border; flattening the styling to match pass + save
+    /// makes the trio feel like a set.
+    private var passButton: some View {
+        VStack(spacing: 4) {
             Button {
                 withAnimation(.spring()) {
                     swipeOffset = -600
@@ -200,13 +291,23 @@ struct CardDeckView: View {
             } label: {
                 Text("👎")
                     .font(.title2)
-                    .frame(width: 56, height: 56)
-                    .background(Color(.systemGray6))
+                    .frame(width: 60, height: 60)
+                    .background(Color(.systemBackground))
                     .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Color.cardBorder, lineWidth: 1))
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             }
+            .buttonStyle(PressFeedbackButtonStyle())
+            .accessibilityLabel("Pass")
 
-            // Like — bigger, gradient border
+            Text("pass")
+                .font(actionLabelStyle.font)
+                .foregroundColor(actionLabelStyle.color)
+        }
+    }
+
+    private var likeButton: some View {
+        VStack(spacing: 4) {
             Button {
                 withAnimation(.spring()) {
                     swipeOffset = 600
@@ -216,27 +317,25 @@ struct CardDeckView: View {
                     }
                 }
             } label: {
-                Text("🔥")
-                    .font(.title)
-                    .frame(width: 72, height: 72)
-                    .background(
-                        Circle()
-                            .fill(Color(.systemBackground))
-                            .shadow(color: .accentColor.opacity(0.3), radius: 8, y: 2)
-                    )
-                    .overlay(
-                        Circle()
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [Color.accentColor, Color(red: 0.45, green: 0.30, blue: 1.0)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 3
-                            )
-                    )
+                Text("❤️")
+                    .font(.title2)
+                    .frame(width: 60, height: 60)
+                    .background(Color(.systemBackground))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Color.cardBorder, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             }
+            .buttonStyle(PressFeedbackButtonStyle())
+            .accessibilityLabel("Like")
 
-            // Save
+            Text("like")
+                .font(actionLabelStyle.font)
+                .foregroundColor(actionLabelStyle.color)
+        }
+    }
+
+    private var saveButton: some View {
+        VStack(spacing: 4) {
             Button {
                 viewModel.save()
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.4)) {
@@ -257,14 +356,19 @@ struct CardDeckView: View {
                 Image(systemName: "bookmark.fill")
                     .font(.title2)
                     .foregroundColor(.yellow)
-                    .frame(width: 56, height: 56)
-                    .background(Color(.systemGray6))
+                    .frame(width: 60, height: 60)
+                    .background(Color(.systemBackground))
                     .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Color.cardBorder, lineWidth: 1))
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
                     .scaleEffect(bookmarkScale)
             }
+            .buttonStyle(PressFeedbackButtonStyle())
             .accessibilityLabel("Save to My List")
-            Spacer()
+
+            Text("save")
+                .font(actionLabelStyle.font)
+                .foregroundColor(actionLabelStyle.color)
         }
     }
 

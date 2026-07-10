@@ -52,6 +52,26 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json(err(`Token verification failed: ${msg}`, 'TOKEN_INVALID'));
   }
 
+  try {
+    return await runLogin(req, res, provider, claims, body);
+  } catch (e) {
+    // Without this, a transient Neon disconnect or any DB-side throw bubbles
+    // out as Vercel's opaque FUNCTION_INVOCATION_FAILED (500). Capture the
+    // real cause + return structured JSON so iOS shows a real message and we
+    // can grep the logs next time.
+    const msg = e instanceof Error ? e.message : String(e);
+    logger.error('auth.login.failed', e, { provider });
+    return res.status(500).json(err(`Login failed: ${msg}`, 'LOGIN_FAILED'));
+  }
+}
+
+async function runLogin(
+  _req: VercelRequest,
+  res: VercelResponse,
+  provider: 'apple' | 'google',
+  claims: Awaited<ReturnType<typeof verifyAppleIdToken>>,
+  body: LoginBody,
+) {
   const sub = claims.sub;
   const email = typeof claims.email === 'string' ? claims.email : null;
   const emailVerified = claims.email_verified === true || claims.email_verified === 'true';
@@ -138,8 +158,23 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   // had one anonymous id pre-login but an existing auth record already owned
   // a different userId for this provider.
   if (body.anonymousUserId && body.anonymousUserId !== userId) {
+    // Reservations are PK'd on their own `id`, so the user_id swap never
+    // collides — multiple reservations per user is fine.
     await sql`UPDATE user_reservations SET user_id = ${userId} WHERE user_id = ${body.anonymousUserId}`;
-    await sql`UPDATE user_favorites    SET user_id = ${userId} WHERE user_id = ${body.anonymousUserId}`;
+
+    // Favorites are PK'd on `(user_id, restaurant_id)`. If the verified user
+    // already favorited a restaurant the anon device also favorited, the
+    // bare UPDATE blows up with a duplicate-key error. Drop those source-side
+    // dupes first; the verified row is the authoritative copy.
+    await sql`
+      DELETE FROM user_favorites
+      WHERE user_id = ${body.anonymousUserId}
+        AND restaurant_id IN (
+          SELECT restaurant_id FROM user_favorites WHERE user_id = ${userId}
+        )
+    `;
+    await sql`UPDATE user_favorites SET user_id = ${userId} WHERE user_id = ${body.anonymousUserId}`;
+
     // Best-effort: remove the now-orphaned anonymous row. Ignore FK errors.
     try {
       await sql`DELETE FROM users WHERE id = ${body.anonymousUserId} AND auth_provider = 'anonymous'`;

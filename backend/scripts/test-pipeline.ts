@@ -7,7 +7,14 @@ import * as path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 
 import { randomUUID } from 'crypto';
-import { db, sql } from '../api/_lib/db';
+import Database from 'better-sqlite3';
+import { sql } from '../api/_lib/db';
+
+// Pipeline writes to local SQLite directly (the Neon-side `sql` is used only
+// for `pipeline_runs` + restaurant insert path, which routes through `sql`
+// when ON_VERCEL=true; locally both go to the same SQLite file).
+const db = new Database(path.resolve(__dirname, '../data/wheretoeat.db'));
+db.pragma('journal_mode = WAL');
 import { searchXhsPosts } from '../api/_lib/xhsScraper';
 import { extractBatch } from '../api/_lib/llmExtractor';
 import { enrichWithPlaces } from '../api/_lib/placesEnricher';
@@ -127,7 +134,7 @@ async function main() {
           pipeline_run_id
         ) VALUES (
           ${newId}, ${CITY},
-          ${r.restaurantName}, ${r.address}, ${r.borough}, ${r.neighborhood}, ${r.cuisineType},
+          ${r.restaurantName}, ${r.address}, ${r.borough}, ${r.neighborhood}, ${r.cuisineKey},
           ${r.recommendation}, ${r.postUrl}, ${r.postCreatedAt ?? null},
           ${r.mentionCount}, ${r.totalLikes},
           ${r.googlePlaceId}, ${r.googleMapsUrl}, ${r.googleDisplayName}, ${r.websiteUrl},

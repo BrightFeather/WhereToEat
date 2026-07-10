@@ -55,6 +55,42 @@ All handlers wrap with `withRequestLogging(handler)` from `_lib/logger.ts`. This
 - `pipeline/run.ts` requires the `CRON_SECRET` header (same value as the cron). Don't remove that check.
 - `vercel.json` sets `maxDuration: 300` for `pipeline/run.ts` (Pro-tier capability) — full runs take longer than the Hobby 60s cap, so testing pipeline changes on Hobby means running locally.
 
+## LLM parser (DeepSeek-V4-Pro)
+
+The XHS post → restaurant extractor and the per-mention classifier both run on **DeepSeek-V4-Pro** via the OpenAI-compatible SDK pointed at `https://api.deepseek.com`. Same pattern as `feedback-agent/src/llm.ts` — secret is `DEEP_SEEK_API` from `~/.config/wte-feedback-agent/secrets.env` (or env var). Model id override: `DEEPSEEK_MODEL` env var.
+
+**Hard rule**: every DeepSeek call passes `thinking: { type: 'disabled' }`. V4 defaults to thinking-on which silently eats `max_tokens` — chokepoint is `_lib/deepseek.ts`. Don't bypass.
+
+### Negative-post filter (drop on any complaint)
+
+Posts that contain **any** complaint, criticism, or hedged endorsement about the target restaurant are dropped at ingest. Implemented in `_lib/llmExtractor.ts`:
+
+- `extractRestaurantData()` adds `hasComplaint: boolean` to its DeepSeek output. If true, the entire post returns `[]` — no restaurants harvested from it. Applied automatically by the weekly pipeline (`scripts/test-pipeline.ts`).
+- `classifyComplaint({ title, body, restaurantName })` is the standalone target-aware classifier used by topup + scrub scripts. It is **target-focused**: only flags complaints aimed at `restaurantName`, not other restaurants in the same post (so a post that praises A and trashes B will keep the (A, post) source row and drop the (B, post) row).
+- Failure mode: if the classifier errors out, it returns `hasComplaint: true` (fail closed — better to drop a borderline post than ingest a bad one).
+
+What counts as a complaint (be aggressive — the rule is "drop on any complains"):
+- Direct criticism (`不好吃`, `踩雷`, `难吃`, `失望`, "wouldn't go back", "skip it", "overrated", "underwhelming", "not great", "service was bad", "wasn't worth it")
+- Mixed reviews about the target ("food great but service bad")
+- Lukewarm endorsement ("just okay", "fine", "nothing special", "alright")
+- "X is not as good as Y" where the target is X
+- Warnings, venting about wait/prices/attitude/hygiene
+
+Pure positive recommendations (`超推荐`, "loved it", "must-try") → kept.
+
+### Ops scripts
+
+- `npm run scrub-negative` — backfill: walks every `xhs_sources` row, classifies via DeepSeek, deletes negatives in SQLite + mirrors the delete to Neon. Env knobs: `ONLY_CUISINES`, `LIMIT`, `DRY_RUN=1`, `SKIP_NEON=1`. Run any time the prompt changes — it's idempotent.
+- `npm run topup-asian` — for `cuisine_type ∈ {chinese, japanese, korean}` with `<5` XHS sources, searches `xhs search "<name>" --sort time` (newest first, then `--sort popular`), passes each candidate through `classifyComplaint`, drops negatives, upserts up to TARGET. Env knobs: `TARGET_PER_RESTAURANT` (default 5), `CUISINES`, `MAX_SEARCH_PAGES`, `DRY_RUN=1`.
+
+## Places enrichment — food-type guard
+
+`_lib/placesEnricher.ts` constrains every Places search to food establishments. The first-pass loop tries `includedType` ∈ `[restaurant, bar, cafe, bakery, meal_takeaway, meal_delivery]` with `strictTypeFiltering: true`. If every food type returns nothing, an unfiltered fallback search runs but is **post-filtered by `FOOD_PRIMARY_TYPES`** — non-food top hits are rejected with `places.rejected_non_food` instead of being adopted.
+
+This guard exists because Places will happily match unrelated NYC landmarks when a venue name is a common abbreviation or word: "Oti" → Office of Technology and Innovation, "Bibliotheque" → New York Public Library — Schwarzman Building, etc. Editorial sources (Resy, Eater) are particularly susceptible because their venue names are short and frequently dictionary words.
+
+If you add a new food-establishment type that Places returns (e.g. a regional cuisine type), append it to `FOOD_PRIMARY_TYPES` so the unfiltered fallback path doesn't reject it. The `FOOD_TYPE_FALLBACKS` array is intentionally small — it's only the broad categories Places accepts as `includedType`.
+
 ## Stack
 
 - TypeScript on `@vercel/node` (Node functions, not Edge — child processes need a real runtime).

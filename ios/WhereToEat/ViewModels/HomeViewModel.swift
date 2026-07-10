@@ -379,6 +379,30 @@ final class HomeViewModel: ObservableObject {
 
     func refresh() {
         weeklySession = WeeklySession.load()
+        // Re-run the home filter pipeline whenever Home re-appears so
+        // `weeklyCount` ("🍽 N picks") reflects the current seen-today /
+        // swipe-history state. Without this the stat freezes at whatever
+        // value it had when the weekly cache last published — every card
+        // the user views afterward shrinks the underlying pool but the
+        // pill stays stuck on the original number.
+        applyFilter()
+    }
+
+    /// Pull-to-refresh entry point. Forces a fresh `/api/restaurants/weekly`
+    /// fetch (conditional ETag — server replies 304 if nothing changed, so
+    /// it's cheap), re-pulls server-side reserved + blocked sets, then
+    /// re-runs the local filter pipeline so the count + picks reflect the
+    /// new pool. The `WeeklyRestaurantService.$status` sink rewires
+    /// `allRestaurants` automatically when fresh data lands.
+    func pullToRefresh() async {
+        async let weekly: Void = WeeklyRestaurantService.shared.fetch(city: city)
+        async let reserved = ReservationService.shared.fetchReservedRestaurantIds()
+        async let blocked  = ReservationService.shared.fetchBlockedRestaurantIds()
+        _ = await weekly
+        remoteReservedIds = await reserved
+        remoteBlockedIds  = await blocked
+        weeklySession = WeeklySession.load()
+        applyFilter()
     }
 
     // MARK: - Selection
@@ -485,6 +509,14 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Filtering
 
     private func applyFilter() {
+        // Mirror the Discovery deck's filter pipeline so the count Home
+        // surfaces ("N picks") matches the count Discovery surfaces
+        // ("N spots left"). Without these subtractions Home reports the
+        // backend pool size (~308) while Discovery reports the post-filter
+        // pool (~244 once the user has seen/disliked/blocked/booked rows).
+        let today = Date()
+        let seen = SeenService.shared.seenToday()
+
         let filtered = allRestaurants.filter { r in
             if showOnlyReservable, !Self.isReservable(r) { return false }
             if !Self.matchesEnabledSources(r, enabled: enabledSources) { return false }
@@ -494,6 +526,22 @@ final class HomeViewModel: ObservableObject {
                normalizedBorough(r.borough) != borough { return false }
             if let hood = selectedNeighborhood,
                normalizedNeighborhood(r.neighborhood) != hood { return false }
+
+            // Same exclusions Discovery applies: reserved + blocked
+            // (server-side), seen-today (on-device), and swipe history
+            // for this week (local).
+            guard let uuid = UUID(uuidString: r.id) else { return false }
+            if remoteReservedIds.contains(uuid) { return false }
+            if remoteBlockedIds.contains(uuid)  { return false }
+            if seen.contains(uuid)              { return false }
+            if let record = weeklySession.swipedCards.first(where: { $0.restaurantId == uuid }) {
+                if record.decision == .blocked,
+                   let until = record.blockedUntil, today < until { return false }
+                if record.decision == .disliked,
+                   Calendar.current.isDate(record.timestamp, equalTo: today, toGranularity: .weekOfYear) {
+                    return false
+                }
+            }
             return true
         }
         weeklyCount = filtered.count

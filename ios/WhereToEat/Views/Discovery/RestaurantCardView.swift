@@ -4,6 +4,11 @@ struct RestaurantCardView: View {
     let restaurant: Restaurant
     var swipeOffset: CGFloat = 0
     var lookedAt: Bool = false      // "You looked at this" indicator
+    /// Closure invoked when the user taps anywhere on the card OUTSIDE the
+    /// photo-navigation regions (left/right halves of the photo). The parent
+    /// drives the actual sheet presentation. nil → no detail handoff (the
+    /// card just sits there if tapped outside photo-nav).
+    var onOpenDetail: (() -> Void)? = nil
 
     private var rotation: Double { Double(swipeOffset / 20) }
     private var likeOpacity: Double { max(0, Double(swipeOffset / 80)) }
@@ -72,7 +77,11 @@ struct RestaurantCardView: View {
                     Color(.systemGray5)
                         .overlay(Image(systemName: "fork.knife").font(.system(size: 60)).foregroundColor(.secondary))
                         .frame(width: geo.size.width, height: geo.size.height)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onOpenDetail?() }
                 } else if urls.count == 1 {
+                    // Single photo — no carousel to navigate, so the whole
+                    // photo area opens detail.
                     CachedAsyncImage(url: urls[0]) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
@@ -81,8 +90,13 @@ struct RestaurantCardView: View {
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
+                    .contentShape(Rectangle())
+                    .onTapGesture { onOpenDetail?() }
                 } else {
-                    // Show current photo (no TabView — its swipe gesture conflicts with card swiping)
+                    // Multi-photo: show the current photo with left/right
+                    // tap halves for navigation. Tapping inside the bottom
+                    // info overlay still opens detail (the overlay is on
+                    // top of the photo in z-order with its own tap handler).
                     CachedAsyncImage(url: urls[photoIndex % urls.count]) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
@@ -91,8 +105,11 @@ struct RestaurantCardView: View {
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
-                    // Tap left/right halves to navigate photos
                     .overlay {
+                        // Three equal vertical regions:
+                        //   left third → previous photo
+                        //   middle third → open detail
+                        //   right third → next photo
                         HStack(spacing: 0) {
                             Color.clear
                                 .contentShape(Rectangle())
@@ -101,6 +118,9 @@ struct RestaurantCardView: View {
                                         photoIndex = max(0, photoIndex - 1)
                                     }
                                 }
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { onOpenDetail?() }
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture {
@@ -199,19 +219,17 @@ struct RestaurantCardView: View {
                                 }
 
                                 if let rec = restaurant.xhsRecommendation {
-                                    let xhsURL = restaurant.sourceLinks.first(where: { $0.platform == .xiaohongshu })?.url
-                                    Button {
-                                        if let xhsURL { XhsURLOpener.open(xhsURL) }
-                                    } label: {
-                                        Text("\u{201C}\(rec)\u{201D}")
-                                            .font(.caption)
-                                            .italic()
-                                            .foregroundColor(.white.opacity(0.85))
-                                            .lineLimit(2)
-                                            .multilineTextAlignment(.leading)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(xhsURL == nil)
+                                    // Plain Text — taps no longer bounce out
+                                    // to the Xiaohongshu app. The full quote
+                                    // (and the source link) is reachable from
+                                    // the detail page; tapping the card
+                                    // should keep the user inside the app.
+                                    Text("\u{201C}\(rec)\u{201D}")
+                                        .font(.caption)
+                                        .italic()
+                                        .foregroundColor(.white.opacity(0.85))
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
                                 }
 
                                 if !restaurant.cuisineTags.isEmpty {
@@ -232,6 +250,11 @@ struct RestaurantCardView: View {
                         colors: [.clear, .black.opacity(0.8)],
                         startPoint: .top, endPoint: .bottom
                     ))
+                    // Tapping the info overlay opens detail. The photo-nav
+                    // halves above sit underneath in z-order so a tap inside
+                    // this rect lands here, not on the photo-nav.
+                    .contentShape(Rectangle())
+                    .onTapGesture { onOpenDetail?() }
                 }
                 .frame(width: geo.size.width)
             }

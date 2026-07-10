@@ -17,9 +17,22 @@ import MapKit
 struct FindView: View {
     @StateObject private var viewModel = FindViewModel()
     @EnvironmentObject private var customListVM: CustomListViewModel
+    @EnvironmentObject private var locationService: LocationService
     @State private var cameraPosition: MapCameraPosition = .region(Self.nycRegion)
     @State private var presentedRestaurant: WeeklyRestaurant? = nil
     @State private var panelFraction: CGFloat = 0.45
+    /// Set on first appear so we don't keep snapping back to the user's
+    /// location every time the tab is re-entered. Subsequent visits respect
+    /// whatever camera the user left behind.
+    @State private var didApplyInitialCenter: Bool = false
+
+    /// Initial span when centering on the user — covers ~1 mile in each
+    /// direction, which gives ~10–30 visible pins in dense NYC and reads as
+    /// "near you" rather than "all of Manhattan".
+    private static let initialNearbySpan = MKCoordinateSpan(
+        latitudeDelta: 0.018,
+        longitudeDelta: 0.018
+    )
 
     private static let nycRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 40.7308, longitude: -73.9973),
@@ -43,6 +56,17 @@ struct FindView: View {
 
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
+                    // Recenter-on-user FAB — bottom-right, sits just above
+                    // the bottom panel. Hidden when we don't have a fix yet
+                    // (no point pretending to recenter to nowhere).
+                    if locationService.currentLocation != nil {
+                        HStack {
+                            Spacer()
+                            recenterButton
+                                .padding(.trailing, 16)
+                                .padding(.bottom, 12)
+                        }
+                    }
                     bottomPanel
                         .frame(height: max(140, geo.size.height * panelFraction))
                 }
@@ -55,6 +79,31 @@ struct FindView: View {
                     .environmentObject(customListVM)
             }
         }
+        .onAppear { applyInitialCenterIfNeeded() }
+        // `CLLocationCoordinate2D` isn't Equatable, so we observe a derived
+        // Bool ("do we have a fix at all?") instead. The first fix flips it
+        // false → true, which lets us snap-to-user once after a late GPS read.
+        .onChange(of: locationService.currentLocation != nil) { _, hasFix in
+            if hasFix { applyInitialCenterIfNeeded() }
+        }
+    }
+
+    /// Center on the user's current location with a tight "nearby" span the
+    /// first time we have one. After that the user controls the camera.
+    /// If we don't have GPS yet, still seed `visibleRegion` from the default
+    /// NYC frame so the initial render is already region-clipped (otherwise
+    /// `mappable` returns every coord-bearing row and the user sees the same
+    /// dot-storm we're trying to avoid).
+    private func applyInitialCenterIfNeeded() {
+        if viewModel.visibleRegion == nil {
+            viewModel.visibleRegion = Self.nycRegion
+        }
+        guard !didApplyInitialCenter else { return }
+        guard let userCoord = locationService.currentLocation else { return }
+        let region = MKCoordinateRegion(center: userCoord, span: Self.initialNearbySpan)
+        cameraPosition = .region(region)
+        viewModel.visibleRegion = region
+        didApplyInitialCenter = true
     }
 
     // MARK: - Map layer
@@ -87,6 +136,14 @@ struct FindView: View {
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls {
             MapCompass()
+        }
+        // Whenever the user finishes a pan/zoom the visible bbox advances.
+        // FindViewModel uses this to clip both the pin set and the bottom
+        // list — fewer dots when zoomed in, more as you zoom out. We use
+        // `.onEnd` (not `.continuous`) to skip the per-frame churn during
+        // a gesture; the dataset (~580 rows) recomputes instantly on release.
+        .onMapCameraChange(frequency: .onEnd) { context in
+            viewModel.visibleRegion = context.region
         }
     }
 
@@ -204,6 +261,37 @@ struct FindView: View {
         )
     }
 
+    // MARK: - Recenter FAB
+
+    /// Floating action button — taps recenter the camera on the user's
+    /// current location with the same tight "nearby" span used on first
+    /// load. Visible only while we have a CoreLocation fix.
+    private var recenterButton: some View {
+        Button(action: recenterOnUser) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.accentColor)
+                .frame(width: 44, height: 44)
+                .background(Color(.systemBackground))
+                .clipShape(Circle())
+                .overlay(
+                    Circle().stroke(Color.cardBorder, lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Recenter on my location")
+    }
+
+    private func recenterOnUser() {
+        guard let userCoord = locationService.currentLocation else { return }
+        let region = MKCoordinateRegion(center: userCoord, span: Self.initialNearbySpan)
+        withAnimation(.easeInOut(duration: 0.35)) {
+            cameraPosition = .region(region)
+        }
+        viewModel.visibleRegion = region
+    }
+
     // MARK: - Map camera
 
     private func centerOn(_ r: WeeklyRestaurant) {
@@ -239,30 +327,65 @@ struct FindView: View {
 
 // MARK: - Map marker
 
-/// Red circle pin, white border, drop shadow — visually consistent with the
-/// reference designs (Resy / OpenTable). Selected state grows + adds an
-/// orange glow ring.
+/// Teardrop-style food marker: red circle with a white fork-and-knife icon,
+/// a subtle highlight gradient, and a small pointer underneath so it reads
+/// as a pin rather than a generic dot. Selected state grows, brightens, and
+/// adds an orange glow ring.
 private struct FindMapMarker: View {
     let isSelected: Bool
     let action: () -> Void
 
+    private static let baseRed = Color(red: 0.95, green: 0.20, blue: 0.20)
+    private static let highlightRed = Color(red: 1.00, green: 0.36, blue: 0.36)
+
     var body: some View {
         Button(action: action) {
-            Circle()
-                .fill(Color(red: 0.95, green: 0.20, blue: 0.20))
-                .frame(width: isSelected ? 22 : 16, height: isSelected ? 22 : 16)
-                .overlay(
-                    Circle().stroke(Color.white, lineWidth: 2)
-                )
-                .shadow(color: .black.opacity(0.25), radius: 3, y: 1.5)
-                .overlay(
+            VStack(spacing: -2) {
+                ZStack {
                     Circle()
-                        .stroke(Color.orange.opacity(isSelected ? 0.55 : 0), lineWidth: 4)
-                        .frame(width: 36, height: 36)
-                )
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+                        .fill(
+                            LinearGradient(
+                                colors: [Self.highlightRed, Self.baseRed],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: isSelected ? 30 : 22, height: isSelected ? 30 : 22)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .shadow(color: .black.opacity(0.30), radius: 3, y: 1.5)
+
+                    Image(systemName: "fork.knife")
+                        .font(.system(size: isSelected ? 13 : 10, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                // Pointer triangle under the circle.
+                Triangle()
+                    .fill(Self.baseRed)
+                    .frame(width: isSelected ? 10 : 8, height: isSelected ? 7 : 5)
+                    .shadow(color: .black.opacity(0.20), radius: 1.5, y: 1)
+            }
+            .overlay(
+                // Selection glow ring (only visible when selected).
+                Circle()
+                    .stroke(Color.orange.opacity(isSelected ? 0.55 : 0), lineWidth: 4)
+                    .frame(width: 44, height: 44)
+                    .offset(y: -2)   // align with the circle, not the pointer
+            )
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Downward-pointing equilateral triangle for the pin's pointer.
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -313,43 +436,142 @@ private struct FindSheetContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            FindSearchBar(text: $viewModel.searchQuery)
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 8)
+
             Text(headerLabel)
                 .font(.fraunces(.title3, weight: .semibold))
                 .padding(.horizontal, 16)
-                .padding(.top, 4)
+                .padding(.top, 2)
                 .padding(.bottom, 6)
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.filtered) { r in
-                            FindRestaurantRowView(
-                                restaurant: r,
-                                excerpt: viewModel.excerpt(for: r),
-                                isSelected: viewModel.selectedRestaurantId == r.id,
-                                onOpen: { onOpen(r) }
-                            )
-                            .id(r.id)
-                            Divider().padding(.leading, 16)
+            // Empty state when search yields nothing — replaces the list,
+            // doesn't crowd it. Cleared by the X inside the search field.
+            if viewModel.hasSearch && viewModel.visibleFiltered.isEmpty {
+                searchEmptyState
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(viewModel.visibleFiltered) { r in
+                                FindRestaurantRowView(
+                                    restaurant: r,
+                                    excerpt: viewModel.excerpt(for: r),
+                                    isSelected: viewModel.selectedRestaurantId == r.id,
+                                    onOpen: { onOpen(r) }
+                                )
+                                .id(r.id)
+                                Divider().padding(.leading, 16)
+                            }
                         }
+                        .padding(.bottom, 20)
                     }
-                    .padding(.bottom, 20)
-                }
-                .onChange(of: viewModel.selectedRestaurantId) { _, newId in
-                    guard let id = newId else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo(id, anchor: .top)
+                    .onChange(of: viewModel.selectedRestaurantId) { _, newId in
+                        guard let id = newId else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(id, anchor: .top)
+                        }
                     }
                 }
             }
         }
     }
 
+    private var searchEmptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary)
+            Text("No matches for \u{201C}\(viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))\u{201D}")
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundColor(.primary)
+                .multilineTextAlignment(.center)
+            Text("Try a different keyword, neighborhood, or cuisine.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 28)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity)
+    }
+
     private var headerLabel: String {
         let n = viewModel.resultCount
-        if let cuisine = viewModel.selectedCuisine {
-            return "\(n) \(viewModel.cuisineDisplayLabel(cuisine)) restaurant\(n == 1 ? "" : "s")"
+        let qualifier: String
+        if viewModel.hasSearch {
+            qualifier = "matching"
+        } else if let cuisine = viewModel.selectedCuisine {
+            qualifier = viewModel.cuisineDisplayLabel(cuisine)
+        } else {
+            qualifier = ""
         }
-        return "\(n) restaurant\(n == 1 ? "" : "s")"
+        let suffix = n == 1 ? "" : "s"
+        return qualifier.isEmpty
+            ? "\(n) restaurant\(suffix)"
+            : "\(n) \(qualifier) restaurant\(suffix)"
+    }
+}
+
+// MARK: - Search bar (top of bottom panel)
+
+/// Capsule TextField with a leading magnifying-glass icon and a trailing
+/// clear (X) button that appears once the user types. Visual language
+/// matches the cuisine chip + map markers — cream `systemBackground`
+/// fill, thin `cardBorder` stroke, no shadow.
+private struct FindSearchBar: View {
+    @Binding var text: String
+    /// Drives keyboard focus so the "Done" key above the keyboard can
+    /// dismiss it without forcing the user to hit Search. Tracking via
+    /// `@FocusState` is the supported way to programmatically resign first
+    /// responder in pure SwiftUI (no UIKit responder-chain hop needed).
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            TextField("Search restaurants, cuisines, neighborhoods", text: $text)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                .focused($isFocused)
+                .toolbar {
+                    // Adds a "Done" button to the keyboard's input accessory
+                    // bar. Trailing Spacer pushes it to the right edge —
+                    // standard iOS pattern. Tap → resigns first responder
+                    // and the keyboard slides away.
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { isFocused = false }
+                            .fontWeight(.semibold)
+                    }
+                }
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.systemBackground))
+        .clipShape(Capsule())
+        .overlay(
+            Capsule().stroke(Color.cardBorder, lineWidth: 1)
+        )
     }
 }

@@ -92,13 +92,20 @@ xcodebuild \
   archive
 
 # 4. Export .ipa.
+#    `-authenticationKey*` flags pass the App Store Connect API key directly
+#    so the export step doesn't need a logged-in Apple ID in Xcode's keychain
+#    (older runs of this script relied on a cached Xcode-Token that has since
+#    expired in the keychain).
 echo "Exporting .ipa…"
 xcodebuild \
   -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
   -exportOptionsPlist "$EXPORT_OPTIONS" \
-  -allowProvisioningUpdates
+  -allowProvisioningUpdates \
+  -authenticationKeyPath "$P8_PATH" \
+  -authenticationKeyID "$ASC_KEY_ID" \
+  -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
 IPA_PATH="$(ls "$EXPORT_PATH"/*.ipa | head -1)"
 if [[ -z "$IPA_PATH" ]]; then

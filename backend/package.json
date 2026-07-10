@@ -12,6 +12,8 @@
     "migrate-places-photos": "ts-node scripts/migrate-places-photos.ts",
     "backfill-coords": "ts-node scripts/backfill-coords.ts",
     "backfill-price": "ts-node scripts/backfill-price-level.ts",
+    "topup-asian": "ts-node scripts/topup-asian-xhs.ts",
+    "scrub-negative": "ts-node scripts/scrub-negative-sources.ts",
     "reset-deck": "bash scripts/reset-deck.sh"
   },
   "dependencies": {
@@ -24,6 +26,7 @@
     "cheerio": "^1.0.0",
     "dotenv": "^17.3.1",
     "js-yaml": "^4.1.1",
+    "openai": "^6.35.0",
     "stripe": "^14.0.0"
   },
   "devDependencies": {

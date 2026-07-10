@@ -346,11 +346,25 @@ final class DiscoveryViewModel: ObservableObject {
 
     func save() {
         guard let card = currentCard else { return }
-        record(SwipeRecord(restaurantId: card.id, decision: .skipped))
+        // Save-only: post the bookmark signal but DO NOT advance the deck
+        // or stamp the card as seen. The user wants to save without losing
+        // their place — they can still swipe / pass / like the same card
+        // afterward.
         NotificationCenter.default.post(name: .saveRestaurant, object: card)
-        // Move on. `advance()` also stamps the card in SeenService so it
-        // won't come back today.
-        advance()
+    }
+
+    /// Reset the local "seen today" set and any local dislike/blocked swipe
+    /// records, then rebuild the deck so previously filtered-out restaurants
+    /// show up again. Server-side blocks (4-week blocks) and reservations
+    /// stay in place — they're long-lived signals that the user explicitly
+    /// asked for, not transient browse history.
+    func resetSeenAndDisliked() {
+        SeenService.shared.clearToday()
+        weeklySession.swipedCards.removeAll { record in
+            record.decision == .disliked || record.decision == .blocked || record.decision == .skipped
+        }
+        weeklySession.save()
+        Task { await loadCards() }
     }
 
     func skip() {

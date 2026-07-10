@@ -156,6 +156,16 @@ struct HomeView: View {
         }
         .background(WarmGradientBackground().ignoresSafeArea())
         .scrollContentBackground(.hidden)
+        .refreshable {
+            // Pull-to-refresh: force a fresh /api/restaurants/weekly fetch.
+            // The conditional ETag path means a 304 (no changes) is cheap,
+            // and a 200 with new data lands in the cache + publishes through
+            // WeeklyRestaurantService.$status, which the home view model is
+            // already subscribed to. After the network round-trip, also
+            // re-pull the user's reserved + blocked sets so the home count
+            // reflects any cross-device changes since last load.
+            await viewModel.pullToRefresh()
+        }
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -285,7 +295,7 @@ struct HomeView: View {
         // "This week" and "My List" inherit the warm serif headline.
         let nav = UINavigationBarAppearance()
         nav.configureWithTransparentBackground()
-        if let inlineFont = UIFont(name: "Fraunces", size: 17) {
+        if let inlineFont = UIFont(name: "Fraunces", size: 24) {
             nav.titleTextAttributes = [
                 .font: inlineFont,
                 .foregroundColor: UIColor.label,
@@ -656,8 +666,10 @@ struct DiscoveryContainerView: View {
         VStack(spacing: 0) {
             // Filter rows container — absorbs stray taps so they can't leak
             // through to the card deck below, which has an onTapGesture that
-            // opens the restaurant detail sheet.
-            VStack(spacing: 6) {
+            // opens the restaurant detail sheet. Designer pass: tighter
+            // inter-row spacing (6 → 3) so the two filter rows read as a
+            // single zone instead of two competing bands.
+            VStack(spacing: 3) {
                 // Cuisine filter row (light orange)
                 if !viewModel.availableCuisines.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -722,7 +734,8 @@ struct DiscoveryContainerView: View {
                     ))
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.top, 3)
+            .padding(.bottom, 14)
             .frame(maxWidth: .infinity)
             // Filter row sits over the warm wash too — `Color.clear` lets the
             // page background show through; `contentShape(Rectangle())` keeps
@@ -736,6 +749,12 @@ struct DiscoveryContainerView: View {
         }
         .background(WarmGradientBackground().ignoresSafeArea())
         .navigationTitle("This week")
+        // Inline mode keeps the chips and card deck at their original Y
+        // position. The bigger font size for "This week" comes from the
+        // global UINavigationBar.appearance() inline-title config in
+        // `HomeView.configureTabBarAppearance` — bumped from 17pt to 24pt
+        // so the title reads as a proper page header without a `.large`
+        // mode that would push the rest of the content down.
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $viewModel.likedRestaurant) { restaurant in
             NavigationStack {
@@ -768,11 +787,8 @@ private struct FilterChip: View {
                 .overlay(
                     Capsule()
                         .stroke(isSelected ? Self.selectedFill : Color.cardBorder,
-                                lineWidth: isSelected ? 2 : 1)
+                                lineWidth: 1)
                 )
-                .shadow(color: isSelected ? Self.selectedFill.opacity(0.35) : .black.opacity(0.05),
-                        radius: isSelected ? 4 : 1.5,
-                        y: isSelected ? 2 : 1)
         }
         .buttonStyle(.plain)
     }
@@ -802,11 +818,8 @@ private struct CuisineChip: View {
                 .overlay(
                     Capsule()
                         .stroke(isSelected ? Self.boldOrange : Self.orangeBorder,
-                                lineWidth: isSelected ? 2 : 1.2)
+                                lineWidth: 1.2)
                 )
-                .shadow(color: isSelected ? Self.boldOrange.opacity(0.35) : .black.opacity(0.05),
-                        radius: isSelected ? 4 : 1.5,
-                        y: isSelected ? 2 : 1)
         }
         .buttonStyle(.plain)
     }

@@ -556,14 +556,29 @@ struct RestaurantDetailView: View {
 
     // MARK: - Bottom bar
 
+    /// True iff `primaryActions` would render at least one button. Used to
+    /// suppress the blurred bottom-bar strip on restaurants that have no
+    /// reservation source AND no swipe context — otherwise the empty
+    /// `primaryActions` body still inherited the padding + material
+    /// background, leaving an empty frosted bar pinned to the bottom.
+    private var hasBottomAction: Bool {
+        if onDislike != nil { return true }
+        if onLike != nil, restaurant.reservationSource != nil { return true }
+        if onLike == nil, onDislike == nil, restaurant.reservationSource != nil { return true }
+        return false
+    }
+
+    @ViewBuilder
     private var bottomBar: some View {
         // Bottom bar carries the primary booking actions only. Open in
         // Google Maps lives inline under the XHS quote; Xiaohongshu is
         // reached by tapping the quote itself.
-        primaryActions
-            .padding(.horizontal)
-            .padding(.vertical, 12)
-            .background(.ultraThinMaterial)
+        if hasBottomAction {
+            primaryActions
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+        }
     }
 
     @ViewBuilder

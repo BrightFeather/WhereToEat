@@ -1,0 +1,30 @@
+{
+  "name": "wte-feedback-agent",
+  "version": "0.1.0",
+  "description": "Daily Gmail → triage → branch + PR pipeline for WhereToEat in-app feedback",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "doctor": "tsx src/cli/doctor.ts",
+    "gmail:auth": "tsx src/cli/gmail-auth.ts",
+    "dry": "tsx src/cli/dry.ts",
+    "once": "tsx src/cli/once.ts",
+    "run:dry": "tsx src/cli/run.ts --dry-run",
+    "run": "tsx src/cli/run.ts",
+    "build": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.14.2",
+    "googleapis": "^144.0.0",
+    "openai": "^4.69.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

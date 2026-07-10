@@ -213,26 +213,69 @@ function cuisineFromPlacesType(type: string | null | undefined): CuisineKey | nu
   }
 }
 
+/**
+ * Whitelist of food-establishment Places types we accept. Without this guard
+ * Places will happily return a NYC government office or library when a
+ * restaurant name happens to be a common word ("Oti" → Office of Technology
+ * and Innovation, "Bibliotheque" → New York Public Library, etc.). We try
+ * each in order and accept the first hit whose primaryType matches — same
+ * effect as `strictTypeFiltering` but works across multiple food categories.
+ */
+const FOOD_TYPE_FALLBACKS = ['restaurant', 'bar', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery'];
+const FOOD_PRIMARY_TYPES = new Set([
+  'restaurant', 'bar', 'cafe', 'coffee_shop', 'bakery', 'meal_takeaway', 'meal_delivery',
+  'fast_food_restaurant', 'fine_dining_restaurant', 'pizza_restaurant', 'sushi_restaurant',
+  'ramen_restaurant', 'bbq_restaurant', 'barbecue_restaurant', 'seafood_restaurant',
+  'steak_house', 'sandwich_shop', 'ice_cream_shop', 'dessert_shop', 'donut_shop',
+  'wine_bar', 'pub', 'breakfast_restaurant', 'brunch_restaurant', 'tea_house',
+  'american_restaurant', 'italian_restaurant', 'french_restaurant', 'chinese_restaurant',
+  'japanese_restaurant', 'korean_restaurant', 'thai_restaurant', 'vietnamese_restaurant',
+  'indian_restaurant', 'mexican_restaurant', 'spanish_restaurant', 'mediterranean_restaurant',
+  'middle_eastern_restaurant', 'greek_restaurant', 'turkish_restaurant', 'lebanese_restaurant',
+  'romanian_restaurant', 'vegetarian_restaurant', 'vegan_restaurant', 'asian_restaurant',
+  'latin_american_restaurant', 'african_restaurant', 'caribbean_restaurant',
+  'brazilian_restaurant', 'argentinian_restaurant', 'peruvian_restaurant',
+  'food_court', 'hamburger_restaurant', 'fried_chicken_restaurant', 'taco_restaurant',
+]);
+
 async function searchPlace(query: string): Promise<PlacesResult | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY not set');
 
-  const response = await axios.post(
-    PLACES_API_BASE,
-    { textQuery: query, languageCode: 'en' },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': FIELDS,
-      },
+  // First pass: strict food-type filter prevents non-restaurant collisions.
+  // If every food type returns nothing we fall through to the unfiltered
+  // search as a last resort (some legitimate venues — coffee bars without a
+  // food program — surface only there). Any unfiltered match still has to
+  // pass the FOOD_PRIMARY_TYPES post-check.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let place: any;
+  for (const includedType of FOOD_TYPE_FALLBACKS) {
+    const r = await axios.post(
+      PLACES_API_BASE,
+      { textQuery: query, languageCode: 'en', includedType, strictTypeFiltering: true },
+      { headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': FIELDS } }
+    );
+    const candidates = r.data?.places;
+    if (candidates && candidates.length > 0) { place = candidates[0]; break; }
+  }
+  if (!place) {
+    const r = await axios.post(
+      PLACES_API_BASE,
+      { textQuery: query, languageCode: 'en' },
+      { headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': FIELDS } }
+    );
+    const candidates = r.data?.places;
+    if (!candidates || candidates.length === 0) return null;
+    const top = candidates[0];
+    const pt = top?.primaryType;
+    if (typeof pt === 'string' && FOOD_PRIMARY_TYPES.has(pt)) {
+      place = top;
+    } else {
+      logger.warn('places.rejected_non_food', { query, primaryType: pt, displayName: top?.displayName?.text });
+      return null;
     }
-  );
-
-  const places = response.data?.places;
-  if (!places || places.length === 0) return null;
-
-  const place = places[0];
+  }
+  if (!place) return null;
   const photos: string[] = (place.photos ?? [])
     .slice(0, 5)
     .map((p: { name: string }) =>

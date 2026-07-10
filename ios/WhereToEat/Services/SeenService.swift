@@ -52,6 +52,12 @@ final class SeenService {
 
     func markSeen(_ id: UUID) { markSeen([id]) }
 
+    /// Wipe today's seen set entirely. Used by the Discovery deck's "reset"
+    /// button so previously-seen restaurants come back into the pool.
+    func clearToday() {
+        defaults.removeObject(forKey: todayKey)
+    }
+
     /// Drop a restaurant from today's seen-set. Used by the rewind button on
     /// Discovery so the previous card actually re-appears in the deck.
     func unmarkSeen(_ id: UUID) {

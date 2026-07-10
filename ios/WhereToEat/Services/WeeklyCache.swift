@@ -23,13 +23,15 @@ final class WeeklyCache {
 
     // Bump the suffix when the cached payload shape changes so old caches
     // are dropped on next launch. v1 → v2 added `priceLevel` (D23/D23c).
-    private static let fileName = "weekly_v2.json"
+    // v2 → v3 (2026-05-03) busted on a fresh DB import so users pick up the
+    // new pool immediately instead of sitting on the 24h-warm cached payload.
+    private static let fileName = "weekly_v3.json"
 
     private(set) var cached: WeeklyCacheEntry?
 
     private init() {
         // Best-effort cleanup of legacy cache files. Cheap on cold start.
-        for legacy in ["weekly_v1.json"] {
+        for legacy in ["weekly_v1.json", "weekly_v2.json"] {
             let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent(legacy)
             if FileManager.default.fileExists(atPath: url.path) {

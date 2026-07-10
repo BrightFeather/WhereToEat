@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd plist for the daily feedback-agent run on this Mac.
+
+  Install:
+    cp scripts/com.weijia.wte-feedback-agent.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.weijia.wte-feedback-agent.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.weijia.wte-feedback-agent.plist
+    rm ~/Library/LaunchAgents/com.weijia.wte-feedback-agent.plist
+
+  Manual trigger:
+    launchctl start com.weijia.wte-feedback-agent
+
+  Logs:
+    ~/Library/Logs/wte-feedback-agent.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.weijia.wte-feedback-agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>cd /Users/chenweijia/Documents/code/WhereToEat/feedback-agent &amp;&amp; /usr/local/bin/npm run run</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/chenweijia/Library/Logs/wte-feedback-agent.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/chenweijia/Library/Logs/wte-feedback-agent.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
