@@ -7,14 +7,14 @@ Started 2026-11-27. Owner's request: scrape restaurants for the **10 biggest US 
 | # | City | Key | Status |
 |---|---|---|---|
 | 1 | New York | `nyc` | live |
-| 2 | Los Angeles | `la` | queued |
-| 3 | Chicago | `chi` | queued |
-| 4 | Houston | `hou` | queued |
-| 5 | Phoenix | `phx` | queued |
-| 6 | Philadelphia | `phl` | queued |
-| 7 | San Antonio | `sat` | queued |
-| 8 | San Diego | `sd` | queued |
-| 9 + 10 | Dallas + Fort Worth | `dfw` | queued (one metro; XHS posts treat DFW as one area, incl. Plano) |
+| 2 | Los Angeles | `la` | **next** (owner: LA only for now) |
+| 3 | Chicago | `chi` | on hold (awaiting owner) |
+| 4 | Houston | `hou` | on hold (awaiting owner) |
+| 5 | Phoenix | `phx` | on hold (awaiting owner) |
+| 6 | Philadelphia | `phl` | on hold (awaiting owner) |
+| 7 | San Antonio | `sat` | on hold (awaiting owner) |
+| 8 | San Diego | `sd` | on hold (awaiting owner) |
+| 9 + 10 | Dallas + Fort Worth | `dfw` | on hold (awaiting owner). One metro: XHS posts treat DFW as one area, incl. Plano |
 | — | SF Bay Area (not top 10; San Jose is #13) | `bay` | live, kept |
 
 Sources: Census population clock (Vintage 2025) and Wikipedia's list of US cities by population. Fort Worth (1.03M) edges out Jacksonville (1.02M) for #10.
@@ -43,27 +43,31 @@ Ambiguous keywords (marked \*) only count a post if its title also names the cit
 
 ## Step queue (one step per scheduled run, in order)
 
-The scheduled task `multi-city-ingest` runs at 09:00 and 15:00 local. Each run does the **first unchecked step**, then checks it off here, commits and pushes. If a step fails (captcha, Chrome logged out, error), leave it unchecked, add a note under "Log", and stop.
+**Scope (owner, 2026-11-27): Los Angeles only.** The other cities (chi, hou, phx, phl, sat, sd, dfw) are **on hold** until the owner gives instructions. Don't configure, count, read or pipeline them.
 
-- [ ] **S1** Backend city configs for `la chi hou phx phl sat sd dfw` in `backend/api/_lib/cityRegions.ts`:
-  - regions ("boroughs") with localities, `CITY_META` (displayName, Places suffixes, bounds), plus an "Other" catch-all region for in-bounds but unmapped localities.
-  - Keyword lists + ambiguity markers in `backend/scripts/xhs-browser-ingest.ts`.
-  - A `MAX_NEW_READS` cap in the read phase.
-  - Unit-check `regionForLocality` for each city. **No scraping in this step.**
-- [ ] **S2** Count phase for `la chi hou phx`: `CITY=<key> MAX_SCROLLS=15 npx ts-node -T scripts/xhs-browser-ingest.ts`, one city after another. Record per-city counts in the Log.
-- [ ] **S3** Count phase for `phl sat sd dfw`.
-- [ ] **S4** Read `la`: `CITY=la MODE=read MAX_POSTS=150`.
-- [ ] **S5** Read `chi` (≤150) · pipeline `la` (`CITY=la POSTS_FILE=data/xhs-raw/posts-la.json EXTRACT_CONCURRENCY=10 npx ts-node scripts/test-pipeline.ts`).
-- [ ] **S6** Read `hou` · pipeline `chi`.
-- [ ] **S7** Read `phx` · pipeline `hou`.
-- [ ] **S8** Read `phl` · pipeline `phx`.
-- [ ] **S9** Read `sat` + `sd` (top 75 each, since they're smaller) · pipeline `phl`.
-- [ ] **S10** Read `dfw` · pipelines `sat`, `sd`.
-- [ ] **S11** Pipeline `dfw`, then the iOS side:
-  - add the new cities to `WeeklyRestaurantService.cities` + `cityBounds`, `CityPickerCard` styles (emoji + subtitle), and the iOS `knownBoroughs` region whitelists (Discovery + Home);
-  - build and verify in the simulator; TestFlight; commit + push.
-  - Then **ask the owner** to approve the Neon sync (`scripts/sync-runs-to-neon.ts`), `npm run mirror-photos`, and the prod deploy.
+The scheduled task `multi-city-ingest` runs at 09:00 and 15:00 local. Each run does the **first unchecked step**, then checks it off here, commits and pushes. If a step fails (captcha, Chrome logged out, error), leave it unchecked, add a note under "Log", and stop. When every step is checked, report that LA is ready and recommend disabling the task until the owner names the next city.
+
+- [ ] **L1** Backend config for `la` + count:
+  - In `backend/api/_lib/cityRegions.ts`, add LA regions ("boroughs") with localities. Suggested: Los Angeles (city neighborhoods: Koreatown, Downtown, Hollywood, Silver Lake, Echo Park, West LA…), San Gabriel Valley (Alhambra, San Gabriel, Monterey Park, Arcadia, Rosemead, Temple City, El Monte, Rowland Heights, Diamond Bar, Walnut, Hacienda Heights, Pasadena), Westside (Santa Monica, Culver City, Beverly Hills, West Hollywood, Venice/Marina del Rey), South Bay (Torrance, Gardena, Redondo/Manhattan/Hermosa Beach, Long Beach), Orange County (Irvine, Costa Mesa, Newport Beach, Anaheim, Fullerton, Tustin, Garden Grove, Huntington Beach), plus an "Other" catch-all for in-bounds but unmapped localities.
+  - Add `CITY_META.la`: displayName "Los Angeles", Places suffixes ("CA" / "Los Angeles, CA"), bounds covering LA County + Orange County ≈ lat 33.40–34.45, lng −118.95…−117.40.
+  - Keywords + markers in `backend/scripts/xhs-browser-ingest.ts`: see the keyword table (la row).
+  - Add a `MAX_NEW_READS` cap in the read phase.
+  - Unit-check `regionForLocality('la', …)` for a few localities.
+  - Then run the count: `CITY=la MAX_SCROLLS=15 npx ts-node -T scripts/xhs-browser-ingest.ts`. Log per-keyword counts and the total.
+- [ ] **L2** Read `la`: `CITY=la MODE=read MAX_POSTS=150` (≤150 new reads). Log read/failed/too-old counts.
+- [ ] **L3** Pipeline `la`: `CITY=la POSTS_FILE=data/xhs-raw/posts-la.json EXTRACT_CONCURRENCY=10 npx ts-node scripts/test-pipeline.ts`.
+  - Verify in local SQLite: rows, region distribution, fill rates (maps, cuisine, features, coords, price, rating), out-of-area rejections.
+  - Check the local API: `npx ts-node scripts/local-server.ts`, then GET `/api/restaurants/weekly?city=la` and `/api/locations?city=la`.
+- [ ] **L4** iOS enablement for `la`:
+  - Add LA to `WeeklyRestaurantService.cities` + `cityBounds`, the `CityPickerCard` style (e.g. 🌴 "LA & Orange County"), and the region names in the iOS `knownBoroughs` whitelists (Discovery + Home).
+  - Build, verify in the simulator against a local backend, release to TestFlight, commit + push.
+  - **Ask the owner** to approve: the Neon sync (`SINCE=<date> npx ts-node -T scripts/sync-runs-to-neon.ts`), then `npm run mirror-photos`, then the prod deploy of the backend config (snapshot diffed against HEAD; curl `weekly?city=la` afterwards).
+
+### On hold (owner will instruct)
+
+chi, hou, phx, phl, sat, sd, dfw. Their keyword drafts are in the table above. When the owner names a city, add L-style steps for it here.
 
 ## Log
 
+- 2026-11-27 — Owner narrowed scope to **Los Angeles only**; other cities on hold. Queue rewritten as L1–L4.
 - 2026-11-27 — Plan written; scheduled task `multi-city-ingest` created (09:00 + 15:00 daily). Same day, shipped separately: "This week's picks" follows GPS unless a city is picked on the Pick page (TestFlight build 37).
