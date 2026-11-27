@@ -27,28 +27,30 @@ struct LuckyCard: View {
             }
 
             rowLabel("CRAVING")
-            chipRow {
+            chipRow(selectedId: viewModel.luckyCuisine ?? "any") {
                 chip("Surprise me", selected: viewModel.luckyCuisine == nil) {
                     viewModel.selectLuckyCuisine(nil)
                 }
+                .id("any")
                 ForEach(viewModel.luckyCuisineOptions, id: \.self) { key in
                     chip(viewModel.cuisineDisplayLabel(key),
                          icon: key == viewModel.luckyInferredCuisine ? "sparkles" : nil,
                          selected: viewModel.luckyCuisine == key) {
                         viewModel.selectLuckyCuisine(key)
                     }
+                    .id(key)
                 }
             }
 
             rowLabel("WHERE")
-            chipRow {
+            chipRow(selectedId: viewModel.luckyPlace.storageValue) {
                 ForEach(viewModel.luckyPlaceOptions, id: \.self) { place in
                     chip(placeLabel(place),
                          icon: place == .nearMe ? "location.fill" : nil,
-                         selected: viewModel.luckyPlace == place,
-                         dimmed: isEmptyRegion(place)) {
+                         selected: viewModel.luckyPlace == place) {
                         viewModel.selectLuckyPlace(place)
                     }
+                    .id(place.storageValue)
                 }
             }
 
@@ -114,14 +116,27 @@ struct LuckyCard: View {
             .padding(.bottom, 6)
     }
 
-    private func chipRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) { content() }
+    /// Horizontal chip row that runs edge to edge inside the card (no chip
+    /// sliver clipped at the padding line) and keeps the selected chip
+    /// scrolled into view, e.g. a remembered "Staten Island".
+    private func chipRow<Content: View>(selectedId: String,
+                                        @ViewBuilder _ content: () -> Content) -> some View {
+        let chips = content()
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) { chips }
+                    .padding(.horizontal, 16)
+            }
+            .padding(.horizontal, -16)
+            .onAppear { proxy.scrollTo(selectedId, anchor: .center) }
+            .onChange(of: selectedId) { _, id in
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+            }
         }
     }
 
     private func chip(_ label: String, icon: String? = nil, selected: Bool,
-                      dimmed: Bool = false, action: @escaping () -> Void) -> some View {
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 if let icon { Image(systemName: icon).font(.caption2) }
@@ -131,7 +146,6 @@ struct LuckyCard: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Capsule().fill(selected ? Self.orange : palette.chipFill))
-            .opacity(dimmed && !selected ? 0.45 : 1)
         }
         .buttonStyle(.plain)
     }
@@ -190,11 +204,6 @@ struct LuckyCard: View {
         case .region(let name): return name
         case .wholeCity: return "All of \(viewModel.luckyCityLabel)"
         }
-    }
-
-    private func isEmptyRegion(_ place: HomeViewModel.LuckyPlace) -> Bool {
-        if case .region(let name) = place { return viewModel.luckyCount(inRegion: name) == 0 }
-        return false
     }
 
     static func milesLabel(_ meters: Double) -> String {

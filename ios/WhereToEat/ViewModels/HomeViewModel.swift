@@ -612,16 +612,17 @@ final class HomeViewModel: ObservableObject {
     }
 
     /// WHERE chips: Near me (when inside the city), the whole city, then the
-    /// city's regions. The two defaults come first so the selected chip is
-    /// on screen without scrolling the row.
+    /// regions that have a match for the chosen cuisine. A region with no
+    /// match is left out (like cuisines with no candidates), except the one
+    /// currently selected, so the selection never disappears.
     var luckyPlaceOptions: [LuckyPlace] {
-        (nearMeAvailable ? [.nearMe] : []) + [.wholeCity] + availableBoroughs.map { .region($0) }
-    }
-
-    /// Candidates for a region chip under the current cuisine. Zero → the
-    /// chip renders dimmed.
-    func luckyCount(inRegion region: String) -> Int {
-        luckyBasePool.filter { matchesLuckyCuisine($0) && normalizedBorough($0.borough) == region }.count
+        let counts = Dictionary(grouping: luckyBasePool.filter(matchesLuckyCuisine)) {
+            normalizedBorough($0.borough)
+        }.mapValues(\.count)
+        let regions = availableBoroughs.filter { name in
+            counts[name, default: 0] > 0 || luckyPlace == .region(name)
+        }
+        return (nearMeAvailable ? [.nearMe] : []) + [.wholeCity] + regions.map { .region($0) }
     }
 
     private func matchesLuckyCuisine(_ r: WeeklyRestaurant) -> Bool {
