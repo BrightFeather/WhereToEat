@@ -17,7 +17,7 @@
  *      (mention_count, total_likes, post_created_at, pipeline_run_id,
  *      updated_at, fresh Google rating). Everything else keeps Neon's value
  *      and is filled from local only when empty. Never touched on existing
- *      rows: is_available_this_week, resy / opentable fields, photo_url /
+ *      rows: is_available_this_week, resy / opentable / tock fields, photo_url /
  *      photo_urls (prod-owned; run `npm run mirror-photos` after syncing new rows).
  *   3. xhs_sources for those restaurants: insert, skip existing.
  * Idempotent — safe to re-run.
@@ -74,7 +74,7 @@ async function main() {
           recommendation, post_url, post_created_at, mention_count, total_likes,
           google_place_id, google_maps_url, google_display_name, website_url,
           photo_url, photo_urls, resy_venue_id, resy_booking_url, opentable_rid, opentable_booking_url,
-          is_available_this_week, pipeline_run_id, created_at,
+          tock_booking_url, is_available_this_week, pipeline_run_id, created_at,
           features, google_rating, google_user_rating_count, instagram_url,
           latitude, longitude, price_level, updated_at
         ) VALUES (
@@ -82,7 +82,7 @@ async function main() {
           ${r.recommendation}, ${r.post_url}, ${r.post_created_at}, ${r.mention_count}, ${r.total_likes},
           ${r.google_place_id}, ${r.google_maps_url}, ${r.google_display_name}, ${r.website_url},
           ${r.photo_url}, ${r.photo_urls}, ${r.resy_venue_id}, ${r.resy_booking_url}, ${r.opentable_rid}, ${r.opentable_booking_url},
-          ${r.is_available_this_week ?? 1}, ${r.pipeline_run_id}, ${r.created_at}::timestamptz,
+          ${r.tock_booking_url ?? null}, ${r.is_available_this_week ?? 1}, ${r.pipeline_run_id}, ${r.created_at}::timestamptz,
           ${r.features}, ${r.google_rating}, ${r.google_user_rating_count}, ${r.instagram_url},
           ${r.latitude}, ${r.longitude}, ${r.price_level}, ${r.updated_at ?? null}::timestamptz
         )
