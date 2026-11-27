@@ -86,7 +86,7 @@ The export step passes `-authenticationKeyPath` / `-authenticationKeyID` / `-aut
 
 `RestaurantDetailView` is presented from Home picks, Discovery card tap, Discovery swipe-right, My List rows, and Find rows. It owns its own booking state machine: `effectiveBookingUrl` opens in `SafariPresenter` (UIKit-direct, not SwiftUI sheet) → `ConfirmBookingForm` (sheet) → `ReservationSuccessView` (full-screen cover). Don't route the deck's `onLike` back through `DiscoveryViewModel.swipeRight()` from here — that path used to swap layouts mid-flow. The completed reservation is the canonical "liked" signal.
 
-The bottom CTA is gated on `reservationSource != nil` (Resy / OpenTable / Tock). Restaurants without a reservation platform get **no** Book / "Go to Website" button — bookmark + website-globe icon in the header are the only outbound actions.
+The bottom CTA shows when the restaurant has a reservation platform (`reservationSource`: Resy / OpenTable / Tock → "Book this one") **or** its own website (`websiteBookingUrl` → "Book on website", added 2026-11-26; Google / Apple Maps links are excluded). Restaurants with neither get no button. Both paths go through `openBrowser()` → Confirm form.
 
 ### Find tab specifics
 

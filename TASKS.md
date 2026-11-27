@@ -90,6 +90,13 @@ Audit of `xhsScraper.ts` → `llmExtractor.ts` → `placesEnricher.ts` → `rest
 | NYC-INGEST-2 | Note: the NYC deck is all available rows, not just this run | ℹ️ Superseded by LAT-3 (2026-11-26). Briefly, after the `NULLS LAST` deploy, `weekly.ts` served only this run's 162 rows. It now serves every available NYC row (684), and the latest run decides only ready vs stale. |
 | NYC-INGEST-3 | Sync to Neon + deploy | ✅ 2026-11-26 (see BA-P1-4). **Incident:** prod `/api/restaurants/weekly` returned 500 for ~3 min (about 20:54–20:57 local). The first deploy snapshot picked up another session's half-finished `weekly.ts` rewrite (`ReferenceError: latestCompleted`). Fixed by redeploying HEAD's `weekly.ts` plus only this session's hunks. That session's rewrite is still undeployed in the working tree. |
 
+### Website booking fallback + OpenTable source research — 2026-11-26
+
+| # | Task | Status |
+|---|------|--------|
+| WEB-BOOK-1 | "Book on website" when a restaurant has no Resy / OpenTable / Tock link (owner chose option 3) | ✅ `RestaurantDetailView`: `websiteBookingUrl` (the restaurant's own site; Google / Apple Maps links excluded) → a globe "Book on website" CTA in both the deck (Pass + Book) and standalone layouts. It runs the same flow: Safari → Confirm form ("I didn't end up booking" as an out) → reservation saved with platform `.other`. Covers **100 of 133 Bay** restaurants (23 have a platform, 10 have neither). The "only show bookable" filter is unchanged: website-only restaurants don't count as bookable there. Verified in the simulator: Tony's Pizza Napoletana → Book on website → tonyspizzanapoletana.com → Done → Confirm form. In TestFlight build 35. |
+| BAY-BOOK-3 | Sanctioned OpenTable link source | 📋 Research 2026-11-26. **No maintained GitHub library.** What exists: reverse-engineered mobile-API code (e.g. a 2021 "Building an OpenTable bot" write-up, euforic/opentable in Go), a PyPI client that calls a third-party hosted endpoint, and many paid Apify scraper actors. All of them violate OpenTable's terms and/or depend on getting past bot protection, so none were adopted. **Sanctioned route:** the OpenTable **Affiliate** program (dev.opentable.com partner portal) gives restaurant data + per-restaurant booking deeplinks (must show "Powered by OpenTable"; approval reportedly ~3–4 weeks). The full Partner API (availability / reservations) needs a signed contract. Next step if wanted: the owner applies for affiliate access; then replace `backfill-opentable.ts` (BAY-BOOK-2, broken) with the affiliate data feed. |
+
 ### City picker + Bay Area in the app — 2026-11-26
 
 | # | Task | Status |

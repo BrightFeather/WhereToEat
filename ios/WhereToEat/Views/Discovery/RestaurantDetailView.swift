@@ -150,6 +150,27 @@ struct RestaurantDetailView: View {
         return nil
     }
 
+    /// Website-booking fallback: a restaurant with no Resy / OpenTable / Tock
+    /// link but its own website gets a "Book on website" CTA. Map links don't
+    /// count (`bookingUrl` falls back to the Google Maps link when there's no
+    /// website, and that page can't take a reservation).
+    private var websiteBookingUrl: URL? {
+        guard restaurant.reservationSource == nil, let url = restaurantWebsiteUrl else { return nil }
+        let host = url.host?.lowercased() ?? ""
+        let isMapLink = host.contains("google.") || host.contains("goo.gl") || host.contains("maps.apple")
+        return isMapLink ? nil : url
+    }
+
+    /// True when the bottom bar can offer a booking action: a reservation
+    /// platform, or the website fallback.
+    private var canBook: Bool {
+        restaurant.reservationSource != nil || websiteBookingUrl != nil
+    }
+
+    private var bookButtonTitle: String {
+        restaurant.reservationSource != nil ? likeButtonLabel : "Book on website"
+    }
+
     /// Compact star + rating + review count pill that sits next to the name.
     /// Trailing `· $$$` chip when Places returned a `priceLevel`.
     private func ratingBadge(rating: Double, count: Int?) -> some View {
@@ -553,8 +574,8 @@ struct RestaurantDetailView: View {
     /// background, leaving an empty frosted bar pinned to the bottom.
     private var hasBottomAction: Bool {
         if onDislike != nil { return true }
-        if onLike != nil, restaurant.reservationSource != nil { return true }
-        if onLike == nil, onDislike == nil, restaurant.reservationSource != nil { return true }
+        if onLike != nil, canBook { return true }
+        if onLike == nil, onDislike == nil, canBook { return true }
         return false
     }
 
@@ -587,7 +608,7 @@ struct RestaurantDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }
-                if onLike != nil, restaurant.reservationSource != nil {
+                if onLike != nil, canBook {
                     // Intentionally NOT calling `onLike()` here.
                     // onLike previously routed through `DiscoveryViewModel.swipeRight()`,
                     // which dismissed this detail sheet AND set `likedRestaurant`,
@@ -599,7 +620,7 @@ struct RestaurantDetailView: View {
                     // mid-flow. The completed reservation is a stronger
                     // "liked" signal than a synthetic swipe-right record.
                     Button(action: openBrowser) {
-                        Label(likeButtonLabel, systemImage: "heart.fill")
+                        Label(bookButtonTitle, systemImage: restaurant.reservationSource != nil ? "heart.fill" : "globe")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -609,16 +630,15 @@ struct RestaurantDetailView: View {
                     }
                 }
             }
-        } else if restaurant.reservationSource != nil {
-            // Standalone context — one Book CTA. Only shown when the
-            // restaurant actually has a reservation platform (Resy /
-            // OpenTable / Tock); the website-fallback "Go to Website"
-            // CTA is intentionally hidden because non-bookable venues
-            // shouldn't get a button-shaped affordance that promises one.
+        } else if canBook {
+            // Standalone context — one Book CTA: the reservation platform
+            // (Resy / OpenTable / Tock) when there is one, otherwise the
+            // restaurant's own website ("Book on website", owner request
+            // 2026-11-26). Venues with neither get no button.
             Button(action: openBrowser) {
                 HStack(spacing: 8) {
-                    Image(systemName: "calendar.badge.plus")
-                    Text("Book this one")
+                    Image(systemName: restaurant.reservationSource != nil ? "calendar.badge.plus" : "globe")
+                    Text(restaurant.reservationSource != nil ? "Book this one" : "Book on website")
                 }
                 .font(.headline)
                 .foregroundColor(.white)
@@ -633,7 +653,10 @@ struct RestaurantDetailView: View {
     // MARK: - Booking state machine glue
 
     private func openBrowser() {
-        guard let url = restaurant.effectiveBookingUrl else { return }
+        // Reservation platform first; website fallback otherwise. Either way
+        // the Confirm form follows, with "I didn't end up booking" as an out.
+        let target = restaurant.reservationSource != nil ? restaurant.effectiveBookingUrl : websiteBookingUrl
+        guard let url = target else { return }
         // Try the native Resy / OpenTable / Tock app via Universal Links
         // first; `BookingURLOpener` falls back to SFSafariViewController for
         // any URL whose host doesn't claim a Universal Link match. The
