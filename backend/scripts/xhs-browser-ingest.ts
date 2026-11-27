@@ -16,7 +16,7 @@
  *   npx ts-node -T scripts/xhs-browser-ingest.ts                     # count
  *   MODE=read MAX_POSTS=300 npx ts-node -T scripts/xhs-browser-ingest.ts
  *
- * Env: CITY (nyc | bay, default nyc), KEYWORDS (comma list, overrides the city list), MIN_LIKES (50), MAX_SCROLLS (20), MAX_POSTS (300), MONTHS (6)
+ * Env: CITY (nyc | bay | la, default nyc), KEYWORDS (comma list, overrides the city list), MIN_LIKES (50), MAX_SCROLLS (20), MAX_POSTS (300), MAX_NEW_READS (150), MONTHS (6)
  * First run opens Chrome for a one-time QR login (persistent profile).
  */
 import * as fs from 'fs';
@@ -38,6 +38,11 @@ const KEYWORDS_BY_CITY: Record<string, string[]> = {
     // exclusive results were New Zealand posts.
     '圣何塞美食', '湾区约会餐厅', '湾区brunch', '湾区漂亮饭', '湾区日料', '湾区中餐', '湾区火锅',
   ],
+  // See agent_docs/multi-city-expansion.md (Orange County is inside `la` bounds).
+  la: [
+    '洛杉矶美食', '洛杉矶探店', '洛杉矶新店', '洛杉矶餐厅', '洛杉矶必吃',
+    '尔湾美食', '圣盖博美食', '洛杉矶约会餐厅',
+  ],
 };
 const CITY = process.env.CITY ?? 'nyc';
 if (!KEYWORDS_BY_CITY[CITY]) throw new Error(`No keyword list for CITY=${CITY}`);
@@ -47,6 +52,8 @@ const MIN_LIKES = Number(process.env.MIN_LIKES ?? 50);
 const MAX_SCROLLS = Number(process.env.MAX_SCROLLS ?? 20);
 const MAX_POSTS = Number(process.env.MAX_POSTS ?? 300);
 const MONTHS = Number(process.env.MONTHS ?? 6);
+/** Hard cap on notes fetched from XHS in one read run (cached notes don't count). Captcha showed up at ~150. */
+const MAX_NEW_READS = Number(process.env.MAX_NEW_READS ?? 150);
 
 const RAW_DIR = path.resolve(__dirname, '../data/xhs-raw');
 const NOTES_DIR = path.join(RAW_DIR, 'notes');
@@ -124,7 +131,7 @@ async function read(xb: XhsBrowser) {
   fs.mkdirSync(NOTES_DIR, { recursive: true });
 
   const posts: RawXhsPost[] = [];
-  let cached = 0, failed = 0, tooOld = 0, consecutiveFails = 0;
+  let cached = 0, failed = 0, tooOld = 0, consecutiveFails = 0, newReads = 0;
   for (let i = 0; i < picked.length; i++) {
     const c = picked[i];
     const file = path.join(NOTES_DIR, `${c.id}.json`);
@@ -133,6 +140,11 @@ async function read(xb: XhsBrowser) {
       note = JSON.parse(fs.readFileSync(file, 'utf8'));
       cached++;
     } else {
+      if (newReads >= MAX_NEW_READS) {
+        console.log(`!!! MAX_NEW_READS=${MAX_NEW_READS} reached at ${i + 1}/${picked.length} — stopping (re-run later; cached notes are skipped)`);
+        break;
+      }
+      newReads++;
       let d: Awaited<ReturnType<XhsBrowser['readNote']>>;
       try {
         d = await xb.readNote(c.id, c.xsecToken);
@@ -166,7 +178,7 @@ async function read(xb: XhsBrowser) {
     if ((i + 1) % 10 === 0) console.log(`  [${i + 1}/${picked.length}] ok=${posts.length} cached=${cached} failed=${failed} tooOld=${tooOld}`);
   }
   fs.writeFileSync(POSTS_FILE, JSON.stringify(posts, null, 2));
-  console.log(`\n=== Read: ${posts.length} posts (cached ${cached}, failed ${failed}, older than ${MONTHS}mo ${tooOld}) → ${POSTS_FILE}`);
+  console.log(`\n=== Read: ${posts.length} posts (new reads ${newReads}, cached ${cached}, failed ${failed}, older than ${MONTHS}mo ${tooOld}) → ${POSTS_FILE}`);
 }
 
 async function main() {

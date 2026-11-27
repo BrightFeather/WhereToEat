@@ -246,13 +246,14 @@ function insideBounds(b: LatLngBounds, lat: unknown, lng: unknown): boolean {
 }
 
 /**
- * Bay Area region + neighborhood. SF → its neighborhood; elsewhere the city
- * name (Places `locality`) is the neighborhood and maps to a region.
+ * Bay Area / LA region + neighborhood. SF / City of LA → its neighborhood;
+ * elsewhere the city name (Places `locality`) is the neighborhood and maps to a region.
  */
-function bayRegionAndNeighborhood(components: AddressComponent[] | undefined): { borough: string | null; neighborhood: string | null } {
+function localityRegionAndNeighborhood(city: string, components: AddressComponent[] | undefined): { borough: string | null; neighborhood: string | null } {
   const locality = components?.find((c) => c.types?.includes('locality'))?.longText ?? null;
-  const borough = regionForLocality('bay', locality);
-  const neighborhood = locality === 'San Francisco' ? extractNeighborhood(components) : locality;
+  const bigCity = city === 'bay' ? 'San Francisco' : city === 'la' ? 'Los Angeles' : null;
+  const neighborhood = locality === bigCity ? extractNeighborhood(components) : locality;
+  const borough = regionForLocality(city, locality, neighborhood);
   return { borough, neighborhood };
 }
 
@@ -300,8 +301,8 @@ async function searchPlace(query: string, city = 'nyc'): Promise<PlacesResult | 
     logger.warn('places.rejected_out_of_area', { query, city, displayName: place.displayName?.text, address: place.formattedAddress });
     return null;
   }
-  const area = city === 'bay'
-    ? bayRegionAndNeighborhood(place.addressComponents)
+  const area = city !== 'nyc'
+    ? localityRegionAndNeighborhood(city, place.addressComponents)
     : { borough: extractBorough(place.addressComponents), neighborhood: extractNeighborhood(place.addressComponents) };
   const photos: string[] = (place.photos ?? [])
     .slice(0, 5)

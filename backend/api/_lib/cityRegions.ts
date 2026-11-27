@@ -128,9 +128,69 @@ const BAY: CityRegions = {
   ],
 };
 
+// Los Angeles + Orange County (city key `la`). Same scheme as `bay`: for the
+// City of Los Angeles the entries are neighborhoods (Places `neighborhood`), for
+// everything else they are city names (Places `locality`). LA-city neighborhoods
+// on the Westside / harbor are listed under Westside / South Bay. In-bounds
+// localities that aren't mapped land in "Other". See agent_docs/multi-city-expansion.md.
+const LA: CityRegions = {
+  city: 'la',
+  boroughs: [
+    {
+      name: 'Los Angeles',
+      neighborhoods: [
+        'Koreatown', 'Downtown Los Angeles', 'Arts District', 'Little Tokyo', 'Chinatown',
+        'Hollywood', 'East Hollywood', 'Los Feliz', 'Silver Lake', 'Echo Park', 'Highland Park',
+        'Eagle Rock', 'Atwater Village', 'Fairfax', 'Mid-Wilshire', 'Hancock Park',
+        'Larchmont', 'Mid-City', 'West Adams', 'Boyle Heights', 'Sherman Oaks', 'Studio City',
+        'Encino', 'North Hollywood', 'Van Nuys', 'Tarzana', 'Woodland Hills',
+        'Glendale', 'Burbank',
+      ],
+    },
+    {
+      name: 'San Gabriel Valley',
+      neighborhoods: [
+        'Alhambra', 'San Gabriel', 'Monterey Park', 'Arcadia', 'Rosemead', 'Temple City',
+        'El Monte', 'South El Monte', 'Rowland Heights', 'Diamond Bar', 'Walnut',
+        'Hacienda Heights', 'City of Industry', 'Industry', 'West Covina', 'Pasadena',
+        'South Pasadena', 'San Marino', 'Chino Hills', 'Monrovia',
+      ],
+    },
+    {
+      name: 'Westside',
+      neighborhoods: [
+        'Santa Monica', 'Culver City', 'Beverly Hills', 'West Hollywood', 'Marina del Rey',
+        'Marina Del Rey', 'Malibu', 'Venice', 'Westwood', 'Brentwood', 'Sawtelle',
+        'West Los Angeles', 'Palms', 'Mar Vista', 'Playa Vista', 'Century City',
+        'Pacific Palisades',
+      ],
+    },
+    {
+      name: 'South Bay',
+      neighborhoods: [
+        'Torrance', 'Gardena', 'Redondo Beach', 'Manhattan Beach', 'Hermosa Beach',
+        'Long Beach', 'El Segundo', 'Hawthorne', 'Lomita', 'Carson', 'Rancho Palos Verdes',
+        'Palos Verdes Estates', 'Rolling Hills Estates', 'San Pedro', 'Wilmington',
+        'Harbor City',
+      ],
+    },
+    {
+      name: 'Orange County',
+      neighborhoods: [
+        'Irvine', 'Costa Mesa', 'Newport Beach', 'Anaheim', 'Fullerton', 'Tustin',
+        'Garden Grove', 'Huntington Beach', 'Westminster', 'Santa Ana', 'Orange',
+        'Buena Park', 'Laguna Beach', 'Laguna Niguel', 'Lake Forest', 'Mission Viejo',
+        'Yorba Linda', 'Brea', 'Cypress', 'Fountain Valley', 'Seal Beach', 'Dana Point',
+      ],
+    },
+    { name: 'Other', neighborhoods: [] },
+  ],
+};
+
 const CITIES: Record<string, CityRegions> = {
   nyc: NYC,
   bay: BAY,
+  la: LA,
 };
 
 export interface LatLngBounds {
@@ -162,6 +222,14 @@ const CITY_META: Record<string, CityMeta> = {
     // Gilroy/Santa Cruz line in the south → Santa Rosa/Napa in the north.
     bounds: { low: { latitude: 36.95, longitude: -123.15 }, high: { latitude: 38.65, longitude: -121.45 } },
   },
+  la: {
+    key: 'la',
+    displayName: 'Los Angeles (including Orange County)',
+    placesHintSuffix: 'CA',
+    placesFallbackSuffix: 'Los Angeles, CA',
+    // LA County + Orange County: Malibu/Santa Clarita edge → San Clemente / Inland Empire edge.
+    bounds: { low: { latitude: 33.40, longitude: -118.95 }, high: { latitude: 34.45, longitude: -117.40 } },
+  },
 };
 
 export function getCityMeta(city: string): CityMeta {
@@ -170,12 +238,21 @@ export function getCityMeta(city: string): CityMeta {
   return meta;
 }
 
-/** Bay Area: map a Places `locality` (city name) to its region. */
-export function regionForLocality(city: string, locality: string | null | undefined): string | null {
-  if (!locality) return null;
+/**
+ * Bay Area / LA: map a Places `locality` (city name) to its region. For LA,
+ * locality "Los Angeles" is split by `neighborhood` (Venice → Westside,
+ * San Pedro → South Bay, else Los Angeles), and unmapped localities → "Other".
+ */
+export function regionForLocality(city: string, locality: string | null | undefined, neighborhood?: string | null): string | null {
+  const fallback = city === 'la' ? 'Other' : null;
+  if (!locality) return fallback;
   const regions = CITIES[city]?.boroughs ?? [];
   if (city === 'bay' && locality === 'San Francisco') return 'San Francisco';
-  return regions.find((r) => r.neighborhoods.includes(locality))?.name ?? null;
+  if (city === 'la' && locality === 'Los Angeles') {
+    const hit = neighborhood ? regions.find((r) => r.name !== 'Los Angeles' && r.neighborhoods.includes(neighborhood)) : undefined;
+    return hit?.name ?? 'Los Angeles';
+  }
+  return regions.find((r) => r.neighborhoods.includes(locality))?.name ?? fallback;
 }
 
 export function getCityRegions(city: string): CityRegions | null {
