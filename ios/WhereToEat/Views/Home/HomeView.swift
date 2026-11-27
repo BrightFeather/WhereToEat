@@ -505,19 +505,30 @@ private struct StatPill: View {
     let value: String
     let label: String
 
+    /// Same card language as the pick cards (cream fill, warm hairline, soft
+    /// shadow) so the pills read as tappable cards on the cream page instead
+    /// of flat gray blocks. The chevron says "this opens something".
     var body: some View {
-        HStack(spacing: 6) {
-            Text(emoji).font(.caption)
+        HStack(spacing: 8) {
+            Text(emoji).font(.subheadline)
             Text(value)
-                .font(.subheadline).fontWeight(.bold)
+                .font(.headline)
+                .foregroundColor(.primary)
             Text(label)
-                .font(.caption2).foregroundColor(.secondary)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.caption).fontWeight(.semibold)
+                .foregroundColor(.secondary.opacity(0.6))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(Color.homeBgBottom)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.cardBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
     }
 }
 

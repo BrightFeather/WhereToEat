@@ -207,6 +207,8 @@ The old purple→orange "Swipe through all N picks →" gradient CTA was **remov
 
 Two tap-through pills below Trending now: `🍽 N picks` opens the Discovery deck, `📍 N saved` switches to the My List tab (via a `.switchToMyList` NotificationCenter bus).
 
+Styled like the pick cards (2026-11-27): cream `homeBgBottom` fill, 1 pt `cardBorder` hairline, soft shadow, 16 pt corners, and a trailing chevron. They used to be flat `systemGray6` blocks that read as cold gray on the cream page.
+
 ### I'm feeling lucky (2026-11-27, HOME-1) — last card on Home
 
 One card (`LuckyCard`) that picks a restaurant for you. Design: `agent_docs/home-trending-and-lucky.md`.
@@ -216,7 +218,7 @@ One card (`LuckyCard`) that picks a restaurant for you. Design: `agent_docs/home
 - **WHERE chips:** `Near me` (only when some deck restaurant is within ~10 mi of the phone), `All of <city>`, then the city's regions. A region with no match for the chosen cuisine is dimmed but tappable.
 - **Near me radius:** 1 mi (NYC) / 3 mi (other cities), doubling up to 3 times until 3+ candidates, else the whole city.
 - **Selection** is saved per city (`lucky.cuisine.<city>`, `lucky.place.<city>`). First-run default: usual cuisine (else Surprise me) + Near me (else the whole city).
-- **Button:** orange "Roll the dice" with "N spots within X mi · N rolls left". With 0 matches it becomes "Widen to all of <city>" (or "Try Surprise me" when already city-wide). After 3 rolls a day (1 + 2 re-rolls, `lucky.rolled.<day>.<user>`) it becomes "Swipe the deck". Chip taps never roll.
+- **Button:** orange "Roll the dice" with "N spots within X mi · N rolls left". With 0 matches it becomes "Widen to all of <city>" (or "Try Surprise me" when already city-wide) and the meta line is hidden so the label isn't truncated. After 3 rolls a day (1 + 2 re-rolls, `lucky.rolled.<day>.<user>`) it becomes "Swipe the deck". Chip taps never roll.
 - **Picking:** candidates = shared filter set ∩ working photo ∩ cuisine ∩ place, minus restaurants already rolled today. Weighted random: deck rank (1 → 0.2) × rating (≥4.5 ×1.3, <4.0 ×0.6) × bookable ×1.5.
 - **Roll screen (`LuckyRollView`, full-screen cover):** ~1.2 s of up to 7 photos flipping and slowing down (light haptic per tick, success haptic on land), then photo, name, `Cuisine · Neighborhood · 0.6 mi`, rating, top quote, **Book this one** (pushes `RestaurantDetailView`) and **Roll again · N left**.
 

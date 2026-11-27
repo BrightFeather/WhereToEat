@@ -54,10 +54,14 @@ struct LuckyCard: View {
 
             HStack(spacing: 10) {
                 actionButton(matchCount: match.restaurants.count)
-                Text(metaLine(match))
-                    .font(.caption)
-                    .foregroundColor(palette.rowLabel)
-                    .lineLimit(2)
+                // With no matches the button itself ("Widen to all of New
+                // York") explains it; the meta line would squeeze it.
+                if !(match.restaurants.isEmpty && viewModel.luckyRollsLeft > 0) {
+                    Text(metaLine(match))
+                        .font(.caption)
+                        .foregroundColor(palette.rowLabel)
+                        .lineLimit(2)
+                }
             }
             .padding(.top, 16)
         }
