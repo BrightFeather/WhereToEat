@@ -901,3 +901,16 @@ Failures: a failing run writes `status = 'failed'` + `error_message`; the endpoi
 
 ---
 
+## App Store Release
+
+First public submission went to Apple review 2026-11-27 (App Store Connect app id `6764465411`, "WhereToEat NYC", iOS App Version 1.1, build 38).
+
+- **Availability:** 174 of 175 countries/regions — China mainland excluded (avoids the China Security Assessment + AIGC content declaration requirements, which this app doesn't need since it isn't marketed there). Hong Kong, Macau and Taiwan remain included.
+- **Pricing:** Free, all included territories.
+- **Privacy Policy URL:** a Claude Artifact page (`https://claude.ai/artifact/A52JRn5K2YssEVodtRh4qS`), set to "Anyone with the link." It documents the anonymous device identifier, optional Apple/Google sign-in (name + email), coarse (city-level) location, and saved restaurants/reservations — matches the actual data flows in `IdentityService`, `AuthService`, `LocationService`, and the `user_reservations`/`user_favorites` backend tables. **If data practices change, this page needs a matching edit** (and the App Privacy section in App Store Connect needs re-publishing to match).
+- **App Privacy (data nutrition label):** 5 data types declared — Coarse Location (App Functionality, not linked), Name + Email Address (App Functionality, linked — only collected on Apple/Google sign-in), Other User Content (App Functionality, linked — saved restaurants, reservation details, dietary prefs), User ID (App Functionality, linked — the anonymous `X-User-Id`). No tracking, no analytics/ad SDKs, no third-party advertising declared, since none exist in the codebase.
+- **Age Rating:** 16+ globally (driven by Unrestricted Web Access — the in-app Safari handoff to Resy/OpenTable/Tock/restaurant websites — plus infrequent alcohol references in restaurant/bar recommendations). Regional variants: A16 Brazil, 15+ Korea.
+- App Store screenshots (Home, Discovery, Restaurant Detail, Find map) were captured from the iPhone 15 Pro simulator and uploaded via Asset Library → attached to the version as the standard first-submission flow (not the separate post-approval "stand-alone asset review," which only works once a version has already been approved).
+
+---
+
