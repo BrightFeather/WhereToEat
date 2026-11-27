@@ -36,12 +36,14 @@
 		5F132D752F7B8272002C2B2B /* RestaurantCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D3F2F7B8272002C2B2B /* RestaurantCardView.swift */; };
 		5F132D762F7B8272002C2B2B /* RestaurantDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D402F7B8272002C2B2B /* RestaurantDetailView.swift */; };
 		5F132D772F7B8272002C2B2B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D422F7B8272002C2B2B /* HomeView.swift */; };
+		5FBAD1610000000000B00161 /* TrendingRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBAD1600000000000B00160 /* TrendingRail.swift */; };
+		5FBAD1710000000000B00171 /* LuckyCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBAD1700000000000B00170 /* LuckyCard.swift */; };
+		5FBAD1810000000000B00181 /* LuckyRollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBAD1800000000000B00180 /* LuckyRollView.swift */; };
 		5F132D782F7B8272002C2B2B /* WeeklyCuisinePromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D432F7B8272002C2B2B /* WeeklyCuisinePromptView.swift */; };
 		5F132D792F7B8272002C2B2B /* OnboardingContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D452F7B8272002C2B2B /* OnboardingContainerView.swift */; };
 		5F132D7A2F7B8272002C2B2B /* AvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D472F7B8272002C2B2B /* AvailabilityView.swift */; };
 		5F132D7B2F7B8272002C2B2B /* ReservationConfirmView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D482F7B8272002C2B2B /* ReservationConfirmView.swift */; };
 		5F132D7C2F7B8272002C2B2B /* ReservationSuccessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D492F7B8272002C2B2B /* ReservationSuccessView.swift */; };
-		5F132D7D2F7B8272002C2B2B /* CityOverrideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4B2F7B8272002C2B2B /* CityOverrideView.swift */; };
 		5F132D7E2F7B8272002C2B2B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4C2F7B8272002C2B2B /* SettingsView.swift */; };
 		5F132D7F2F7B8272002C2B2B /* PhotoCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4E2F7B8272002C2B2B /* PhotoCarouselView.swift */; };
 		5F132D802F7B8272002C2B2B /* PlatformBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4F2F7B8272002C2B2B /* PlatformBadgeView.swift */; };
@@ -139,12 +141,14 @@
 		5F132D3F2F7B8272002C2B2B /* RestaurantCardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RestaurantCardView.swift; sourceTree = "<group>"; };
 		5F132D402F7B8272002C2B2B /* RestaurantDetailView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RestaurantDetailView.swift; sourceTree = "<group>"; };
 		5F132D422F7B8272002C2B2B /* HomeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		5FBAD1600000000000B00160 /* TrendingRail.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TrendingRail.swift; sourceTree = "<group>"; };
+		5FBAD1700000000000B00170 /* LuckyCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LuckyCard.swift; sourceTree = "<group>"; };
+		5FBAD1800000000000B00180 /* LuckyRollView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LuckyRollView.swift; sourceTree = "<group>"; };
 		5F132D432F7B8272002C2B2B /* WeeklyCuisinePromptView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WeeklyCuisinePromptView.swift; sourceTree = "<group>"; };
 		5F132D452F7B8272002C2B2B /* OnboardingContainerView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OnboardingContainerView.swift; sourceTree = "<group>"; };
 		5F132D472F7B8272002C2B2B /* AvailabilityView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AvailabilityView.swift; sourceTree = "<group>"; };
 		5F132D482F7B8272002C2B2B /* ReservationConfirmView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReservationConfirmView.swift; sourceTree = "<group>"; };
 		5F132D492F7B8272002C2B2B /* ReservationSuccessView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReservationSuccessView.swift; sourceTree = "<group>"; };
-		5F132D4B2F7B8272002C2B2B /* CityOverrideView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CityOverrideView.swift; sourceTree = "<group>"; };
 		5F132D4C2F7B8272002C2B2B /* SettingsView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5F132D4E2F7B8272002C2B2B /* PhotoCarouselView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PhotoCarouselView.swift; sourceTree = "<group>"; };
 		5F132D4F2F7B8272002C2B2B /* PlatformBadgeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PlatformBadgeView.swift; sourceTree = "<group>"; };
@@ -360,6 +364,9 @@
 			isa = PBXGroup;
 			children = (
 				5F132D422F7B8272002C2B2B /* HomeView.swift */,
+				5FBAD1600000000000B00160 /* TrendingRail.swift */,
+				5FBAD1700000000000B00170 /* LuckyCard.swift */,
+				5FBAD1800000000000B00180 /* LuckyRollView.swift */,
 				5F132D432F7B8272002C2B2B /* WeeklyCuisinePromptView.swift */,
 			);
 			path = Home;
@@ -387,7 +394,6 @@
 		5F132D4D2F7B8272002C2B2B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				5F132D4B2F7B8272002C2B2B /* CityOverrideView.swift */,
 				5F132D4C2F7B8272002C2B2B /* SettingsView.swift */,
 				5FBAD0F00000000000B000F0 /* FeedbackView.swift */,
 			);
@@ -625,7 +631,6 @@
 				5F132D882F7B8272002C2B2B /* HomeViewModel.swift in Sources */,
 				5F132D652F7B8272002C2B2B /* Review.swift in Sources */,
 				5F132D7B2F7B8272002C2B2B /* ReservationConfirmView.swift in Sources */,
-				5F132D7D2F7B8272002C2B2B /* CityOverrideView.swift in Sources */,
 				5F132D862F7B8272002C2B2B /* CustomListViewModel.swift in Sources */,
 				5F132D712F7B8272002C2B2B /* AddRestaurantView.swift in Sources */,
 				5F132D732F7B8272002C2B2B /* ImportPreviewView.swift in Sources */,
@@ -667,6 +672,9 @@
 				5F132D6F2F7B8272002C2B2B /* PersistenceController.swift in Sources */,
 				5F132D642F7B8272002C2B2B /* Restaurant.swift in Sources */,
 				5F132D772F7B8272002C2B2B /* HomeView.swift in Sources */,
+				5FBAD1610000000000B00161 /* TrendingRail.swift in Sources */,
+				5FBAD1710000000000B00171 /* LuckyCard.swift in Sources */,
+				5FBAD1810000000000B00181 /* LuckyRollView.swift in Sources */,
 				5F132D7E2F7B8272002C2B2B /* SettingsView.swift in Sources */,
 				5FBAD0F10000000000B000F1 /* FeedbackView.swift in Sources */,
 				5F132D722F7B8272002C2B2B /* CustomListView.swift in Sources */,

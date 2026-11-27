@@ -14,6 +14,7 @@ struct HomeView: View {
     @StateObject private var pickVM: DiscoveryViewModel
     @EnvironmentObject private var locationService: LocationService
     @State private var selectedTab: Int = 0
+    @State private var luckyResult: HomeViewModel.LuckyResult?
 
     init() {
         // Pick tab reuses the existing Discovery view model. Lifted here as
@@ -139,17 +140,26 @@ struct HomeView: View {
                     picksSection
                 }
 
-                // Single gradient CTA into the swipe deck — always rendered so
-                // the user can reach Discovery even when the weekly pipeline
-                // is rebuilding (weeklyCount = 0) or the source-filter set is
-                // empty. Discovery itself shows the appropriate empty/
-                // building state.
-                findAnotherRestaurantButton
-                    .padding(.horizontal)
+                // Trending now — restaurants from the most recent popular
+                // 小红书 posts. Hidden when fewer than 4 qualify.
+                let trending = viewModel.trendingPicks
+                if !trending.isEmpty {
+                    trendingSection(trending)
+                }
 
-                // Stats — only when we actually have a count to show.
+                // Stats — only when we actually have a count to show. The
+                // "🍽 N picks" pill is also the Home entry into the swipe deck
+                // (the old gradient "Swipe through all N picks" CTA is gone).
                 if viewModel.weeklyCount > 0 {
                     statsRow
+                }
+
+                // I'm feeling lucky — last thing on Home.
+                if viewModel.luckyAvailable {
+                    LuckyCard(viewModel: viewModel) {
+                        luckyResult = viewModel.rollLucky()
+                    }
+                    .padding(.horizontal)
                 }
             }
             .padding(.vertical)
@@ -167,54 +177,39 @@ struct HomeView: View {
             await viewModel.pullToRefresh()
         }
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $luckyResult) { result in
+            LuckyRollView(viewModel: viewModel, result: result)
+                .environmentObject(customListVM)
+        }
+        .onReceive(customListVM.$restaurants) { viewModel.savedRestaurants = $0 }
     }
 
-    // MARK: - Gradient CTA into the swipe deck
+    // MARK: - Trending now
 
-    private var findAnotherRestaurantButton: some View {
-        // Used to push Discovery via NavigationStack; now jumps to the Pick
-        // tab via the `.switchToPick` notification bus so the Discovery deck
-        // is reachable as a top-level tab.
-        Button {
-            NotificationCenter.default.post(name: .switchToPick, object: nil)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.subheadline).fontWeight(.semibold)
-                Text(ctaLabel)
-                    .font(.subheadline).fontWeight(.semibold)
-                Spacer()
-                Image(systemName: "arrow.right")
-                    .font(.subheadline).fontWeight(.semibold)
+    private func trendingSection(_ picks: [HomeViewModel.TrendingPick]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("Trending now")
+                    .font(.fraunces(.title3, weight: .semibold))
+                    .foregroundColor(.primary)
+                Image(systemName: "flame.fill")
+                    .foregroundColor(LuckyCard.orange)
             }
-            .foregroundColor(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.45, green: 0.20, blue: 0.95),
-                        Color(red: 0.98, green: 0.48, blue: 0.10)
-                    ],
-                    startPoint: .leading, endPoint: .trailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: Color(red: 0.45, green: 0.20, blue: 0.95).opacity(0.35),
-                    radius: 10, y: 4)
-        }
-        .buttonStyle(.plain)
-    }
+            .padding(.horizontal)
 
-    /// "Swipe through all N picks" when we have a count; bookings-only fallback
-    /// keeps the shorter phrasing from before.
-    private var ctaLabel: String {
-        let total = viewModel.weeklyCount
-        if viewModel.hasUpcomingReservations {
-            return total > 0 ? "Swipe through \(total) more picks" : "Find another restaurant"
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(picks) { pick in
+                        NavigationLink(destination: detailDestination(for: pick.restaurant)) {
+                            TrendingCard(pick: pick)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+            }
         }
-        return total > 0 ? "Swipe through all \(total) picks" : "Find another restaurant"
     }
 
     // MARK: - This week's picks
@@ -662,8 +657,6 @@ struct DiscoveryWrapper: View {
 struct DiscoveryContainerView: View {
     @ObservedObject var viewModel: DiscoveryViewModel
     @EnvironmentObject private var customListVM: CustomListViewModel
-    @ObservedObject private var weekly = WeeklyRestaurantService.shared
-    @State private var showCityPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -759,167 +752,12 @@ struct DiscoveryContainerView: View {
         // so the title reads as a proper page header without a `.large`
         // mode that would push the rest of the content down.
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { cityPicker }
-        }
         .sheet(item: $viewModel.likedRestaurant) { restaurant in
             NavigationStack {
                 RestaurantDetailView(restaurant: restaurant)
                     .environmentObject(customListVM)
             }
         }
-    }
-
-    /// Top-left city switcher. A compact chip, half-transparent at rest so it
-    /// doesn't compete with the "This week" title, that opens a styled
-    /// popover card (`CityPickerCard`). The whole app (Home, Pick, Find)
-    /// follows the choice. Defaults to New York.
-    private var cityPicker: some View {
-        let label = WeeklyRestaurantService.cities.first { $0.key == weekly.activeCity }?.label ?? "New York"
-        return Button { showCityPicker = true } label: {
-            HStack(spacing: 5) {
-                Image(systemName: weekly.isAutoCity ? "location.circle.fill" : "mappin.circle.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                Text(label)
-                    .font(.subheadline.weight(.semibold))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
-            }
-            .foregroundColor(.primary)
-            .opacity(showCityPicker ? 1 : 0.5)
-            .animation(.easeOut(duration: 0.15), value: showCityPicker)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("City: \(label). Double-tap to change.")
-        .popover(isPresented: $showCityPicker, arrowEdge: .top) {
-            CityPickerCard(
-                selected: weekly.activeCity,
-                isAuto: weekly.isAutoCity,
-                gpsCityLabel: weekly.gpsCity.flatMap { key in WeeklyRestaurantService.cities.first { $0.key == key }?.label },
-                onUseLocation: {
-                    weekly.useCurrentLocation()
-                    showCityPicker = false
-                },
-                onSelect: { key in
-                    weekly.selectCity(key)
-                    showCityPicker = false
-                }
-            )
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-}
-
-// MARK: - City picker card (Pick-page popover)
-
-/// Popover content for the Pick-page city switcher: a compact row per city
-/// with a landmark emoji tile (🗽 / 🌉), name, short subtitle and a check on
-/// the current city.
-private struct CityPickerCard: View {
-    let selected: String
-    /// Following GPS ("Current location") rather than an explicit pick.
-    let isAuto: Bool
-    /// City the GPS fix falls in, if any supported one.
-    let gpsCityLabel: String?
-    let onUseLocation: () -> Void
-    let onSelect: (String) -> Void
-
-    private struct CityStyle {
-        let emoji: String
-        let subtitle: String
-        let tint: Color
-    }
-
-    private static let styles: [String: CityStyle] = [
-        "nyc": CityStyle(emoji: "🗽", subtitle: "5 boroughs", tint: Color(red: 0.95, green: 0.45, blue: 0.20)),
-        "bay": CityStyle(emoji: "🌉", subtitle: "SF & the Bay", tint: Color(red: 0.25, green: 0.50, blue: 0.95)),
-    ]
-
-    var body: some View {
-        VStack(spacing: 2) {
-            locationRow
-            Divider().padding(.horizontal, 8).padding(.vertical, 2)
-            ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
-                row(key: city.key, label: city.label)
-            }
-        }
-        .padding(6)
-        .frame(width: 220)
-    }
-
-    /// "Current location": follow GPS. Subtitle names the detected city, or
-    /// says we fall back to New York when the fix isn't in a supported city.
-    private var locationRow: some View {
-        let tint = Color.accentColor
-        return Button(action: onUseLocation) {
-            HStack(spacing: 10) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(tint)
-                    .frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(0.12)))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Current location")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                    Text(gpsCityLabel.map { "Near \($0)" } ?? "Not near a city yet · New York")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 6)
-                if isAuto {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(tint)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(isAuto ? tint.opacity(0.08) : Color.clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Current location" + (isAuto ? ", selected" : ""))
-    }
-
-    private func row(key: String, label: String) -> some View {
-        let style = Self.styles[key] ?? CityStyle(emoji: "📍", subtitle: "", tint: .gray)
-        let isSelected = !isAuto && key == selected
-        return Button { onSelect(key) } label: {
-            HStack(spacing: 10) {
-                Text(style.emoji)
-                    .font(.system(size: 20))
-                    .frame(width: 34, height: 34)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(style.tint.opacity(0.15))
-                    )
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                    Text(style.subtitle)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                Spacer(minLength: 6)
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(style.tint)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(isSelected ? style.tint.opacity(0.08) : Color.clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label + (isSelected ? ", selected" : ""))
     }
 }
 
