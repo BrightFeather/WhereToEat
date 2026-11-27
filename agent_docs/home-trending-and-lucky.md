@@ -76,8 +76,13 @@ The rail uses the same filter set as This week's picks: reserved, blocked, seen-
 1. **Card on Home** (visual pass, 2026-11-27, Option A recommended):
    - Deep indigo card (~150 pt tall, 20 pt corners) so it stands out from the cream page; the only dark surface on Home.
    - Right side: a fan of three tilted photo cards (real thumbnails from the candidate pool, the front one face-down with a "?").
-   - Left: small caption "I'm feeling lucky", big title "Can't decide?", then two input chips: cuisine (`Japanese`) and place (`Near you` / `Manhattan`). Each chip opens the craving sheet at that section, replacing the separate "Change" link.
-   - Amber pill button "🎲 Roll the dice" + "3 rolls left today". Tapping the button (or anywhere on the card outside the chips) rolls immediately.
+   - Left: small caption "I'm feeling lucky", big title "Can't decide?".
+   - **Inline pickers on the card (user, 2026-11-27; replaces the craving sheet):**
+     - **CRAVING** row: horizontal-scroll chips, single select. Order: `Surprise me`, then the inferred cuisine with a ✨ (your usual), then the rest by candidate count. Only cuisines with ≥1 candidate in the current city show.
+     - **WHERE** row: horizontal-scroll chips, single select. `Near me` (only when GPS is inside the selected city), then the city's regions (NYC boroughs / Bay regions, same canonical list as Discovery), then `All of NYC` / `All of Bay Area`.
+     - A region chip with 0 matches for the chosen cuisine renders dimmed but stays tappable.
+     - Selection persists in UserDefaults (per city) until changed. First-run defaults: inferred cuisine (else `Surprise me`) + `Near me` (else `All of <city>`).
+   - Amber pill button "🎲 Roll the dice" + "N spots · 3 rolls left". The count updates live as chips change. With 0 matches the button turns into "Widen to all of <city>", which switches WHERE to the whole city. Only the button rolls; chip taps never roll.
    - The fan shuffles in place for the first ~0.6 s (photos swap and jiggle), then the full-screen result takes over.
    - Option B (alternative): a light amber "scratch-off ticket" with a dashed border, a dice tile that flips to the result photo, and a "Reveal my spot" button. Calmer, but blends in with the cream page.
 2. **Roll animation** (~1.2 s): a full-screen cover shuffles 5–6 candidate photos like a slot machine, slowing down, then lands. Light haptic on each tick, success haptic on land.
@@ -93,12 +98,12 @@ There is no saved cuisine preference today (`UserProfile` has dietary tags only)
 | Saved to My List / bookmark | 2 |
 | Liked swipe (right) this month | 1 |
 
-Take the top cuisine (normalized via `normalizedCuisine`, so `Japanese` = `japanese`). If there are fewer than 2 signals in total, use **Anything**. The craving sheet ("What are you craving?") shows the city's cuisines as chips with the inferred one pre-selected, plus "Anything". A manual pick is remembered for the day.
+Take the top cuisine (normalized via `normalizedCuisine`, so `Japanese` = `japanese`). If there are fewer than 2 signals in total, use **Anything**. The inferred cuisine only sets the first-run default and the ✨ chip; the CRAVING row on the card is the override (no separate sheet).
 
 ### Location input ✅
 
 - **Near me** (default when GPS is inside the selected city): radius starts at 1 mi in NYC / 3 mi in the Bay, widens ×2 up to 3 times until there are at least 3 candidates, then falls back to the whole city. Distance is shown on the result.
-- **GPS outside the city / denied**: use the borough/region chip on the sheet (default: the most common region in the user's history, else the whole city).
+- **GPS outside the city / denied**: `Near me` chip is hidden; use a region chip on the card (default: the most common region in the user's history, else the whole city).
 - Rows without coordinates are only candidates in the whole-city fallback.
 
 ### Picking ✅
@@ -110,7 +115,7 @@ If nothing matches the cuisine: "No Thai spots near you — here's the closest t
 ## Implementation sketch (for after approval)
 
 - `HomeViewModel`: `trendingPicks: [TrendingPick]` (computed like `homePicks`), `luckyInputs`, `rollLucky() -> WeeklyRestaurant?`, `luckyRollsToday` in UserDefaults keyed by date and user.
-- New views under `Views/Home/`: `TrendingRail.swift`, `LuckyCard.swift`, `LuckyRollView.swift` (full-screen cover), `CravingSheet.swift`. pbxproj IDs in `5FBAD0*`.
+- New views under `Views/Home/`: `TrendingRail.swift`, `LuckyCard.swift`, `LuckyRollView.swift` (full-screen cover). No `CravingSheet` — pickers are inline in `LuckyCard`. pbxproj IDs in `5FBAD0*`.
 - `LocationService` already exposes the fix; distance via `CLLocation.distance(from:)`.
 - No backend change. `SPEC.md § Home` gets two new subsections when built.
 
@@ -118,5 +123,5 @@ If nothing matches the cuisine: "No Thai spots near you — here's the closest t
 
 1. **Trending format**: horizontal rail (proposed), or vertical cards exactly like This week's picks (3 cards, taller page)?
 2. **Lucky "one shot"**: 1 roll + 2 re-rolls per day (proposed), unlimited, or literally one per day?
-3. **Lucky cuisine**: inferred from history with a sheet to change it (proposed), or ask every time?
+3. ~~Lucky cuisine input~~ — resolved 2026-11-27: inline CRAVING / WHERE chip rows on the card, inferred cuisine as default.
 4. **Trending window**: 30 days widening to 90 (proposed). The ingest is only as fresh as the last browser ingest run; if ingest stalls for a month the rail quietly hides.
