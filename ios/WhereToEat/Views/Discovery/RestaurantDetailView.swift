@@ -406,23 +406,13 @@ struct RestaurantDetailView: View {
     /// likes-desc order from the backend (Eater / Resy don't have a like
     /// signal worth re-ranking on, and editor articles are usually one-quote
     /// each). Order across types: 小红书 first (longest-first), then others.
+    /// XHS quotes keep the server's order: `/api/restaurants/weekly` ranks them
+    /// by popularity × freshness and serves the top 10. Editorial sources follow.
     private func sortedSources(_ sources: [XHSSource]) -> [XHSSource] {
         let nonEmpty = sources.filter { ($0.recommendation ?? "").isEmpty == false }
         let xhs = nonEmpty.filter { $0.resolvedType == "xiaohongshu" }
-            .sorted { wordCount($0.recommendation) > wordCount($1.recommendation) }
         let others = nonEmpty.filter { $0.resolvedType != "xiaohongshu" }
         return xhs + others
-    }
-
-    /// Word-ish count that does the right thing for both English (whitespace-split)
-    /// and Chinese (no spaces — fall back to character count). We use the larger
-    /// of the two so a Chinese-only quote isn't treated as 1 word.
-    private func wordCount(_ text: String?) -> Int {
-        guard let text else { return 0 }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return 0 }
-        let whitespaceTokens = trimmed.split { $0.isWhitespace || $0.isNewline }.count
-        return max(whitespaceTokens, trimmed.count)
     }
 
     /// Group counter under the section header. Rules:

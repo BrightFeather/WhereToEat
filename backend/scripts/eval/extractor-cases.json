@@ -1,0 +1,128 @@
+[
+  {
+    "id": "listicle-one-mixed",
+    "why": "A single mixed review must not take down the other 4 positives (old prompt drops the whole post)",
+    "title": "纽约周末吃了5家｜全部真实体验",
+    "body": "1️⃣ Lucali 布鲁克林的披萨真的名不虚传，饼底薄脆，calzone也超好吃！\n2️⃣ Thai Diner 泰式早午餐，Thai tea French toast必点，甜而不腻\n3️⃣ Los Tacos No.1 Chelsea Market里的，adobada taco绝了，排队也快\n4️⃣ Mighty Bowl 菜品还可以，但是服务员态度很差，等了40分钟才上菜\n5️⃣ Raku 乌冬汤底超鲜，冷乌冬弹牙，一定要试\n#纽约美食[话题]# #纽约探店[话题]#",
+    "expect": { "keep": ["Lucali", "Thai Diner", "Los Tacos", "Raku"], "drop": ["Mighty Bowl"] }
+  },
+  {
+    "id": "pure-positive-hashtags",
+    "why": "Single positive post; recommendation must be clean of #...[话题]# tags",
+    "title": "纽约最好吃的拉面没有之一🍜",
+    "body": "Ramen Ishida 真的是我心中纽约No.1！黑松露鸡汤酱油拉面汤头超浓郁，叉烧入口即化，溏心蛋完美。\n📍Lower East Side\n💰人均$30\n#纽约拉面[话题]# #纽约美食[话题]# #NYCEats[话题]#",
+    "expect": { "keep": ["Ramen Ishida"], "drop": [] }
+  },
+  {
+    "id": "hotel-stay",
+    "why": "The hotel itself is not a dining pick; the rooftop bar is",
+    "title": "布鲁克林staycation🏨",
+    "body": "这周末住在1 Hotel Brooklyn Bridge，房间可以看到曼哈顿天际线。晚上去了酒店楼上的 Harriet's Rooftop，夜景绝了，鸡尾酒也很好喝，强烈推荐日落时间去！",
+    "expect": { "keep": ["Harriet"], "drop": ["1 Hotel"] }
+  },
+  {
+    "id": "sponsored",
+    "why": "Sponsored / invited tasting -> drop entire post",
+    "title": "受邀探店｜纽约新开的韩式烤肉",
+    "body": "感谢 Seoul Garden BBQ 的邀请🙏 今天来试吃了他们的新菜单，和牛五花超香，小菜也很丰富～ 现在报我的名字可以打9折哦！#品牌合作[话题]# #纽约美食[话题]#",
+    "expect": { "keep": [], "drop": ["Seoul Garden"] }
+  },
+  {
+    "id": "giveaway",
+    "why": "Giveaway / fan-benefit post -> drop",
+    "title": "🎁粉丝福利｜送双人餐券",
+    "body": "和 Noodle Village 合作抽奖啦！关注+评论区说说你最爱的面，抽3位宝子送双人餐券～ 他们家的牛腩面真的超好吃",
+    "expect": { "keep": [], "drop": ["Noodle Village"] }
+  },
+  {
+    "id": "lukewarm",
+    "why": "Lukewarm endorsement counts as a complaint",
+    "title": "Carbone 打卡",
+    "body": "终于订到了Carbone，辣味伏特加意面还行吧，中规中矩，环境不错，但感觉有点名不副实，打卡一次就够了。",
+    "expect": { "keep": [], "drop": ["Carbone"] }
+  },
+  {
+    "id": "x-not-as-good-as-y",
+    "why": "Target X loses the comparison -> drop X; Y is praised -> keep Y",
+    "title": "纽约小笼包对比",
+    "body": "Joe's Shanghai 的小笼包感觉不如南翔，皮有点厚。南翔小笼包 Nan Xiang Xiao Long Bao 汤汁超多，蟹粉小笼必点！法拉盛总店最好吃。",
+    "expect": { "keep": ["Nan Xiang"], "drop": ["Joe's Shanghai"] }
+  },
+  {
+    "id": "grocery-plus-restaurant",
+    "why": "Grocery store is not a dining venue",
+    "title": "K-town一日游",
+    "body": "先去H Mart买了一堆零食和泡面，然后去了楼上的 Jongro BBQ，牛舌和五花肉烤得刚刚好，配菜无限续，太满足了！",
+    "expect": { "keep": ["Jongro"], "drop": ["H Mart"] }
+  },
+  {
+    "id": "chinese-only-name",
+    "why": "Chinese-only name should be kept; englishName must not be invented",
+    "title": "法拉盛宝藏川菜🌶",
+    "body": "法拉盛的老川味小馆真的太正宗了！水煮鱼麻辣鲜香，干煸四季豆yyds，每次回来必吃。",
+    "expect": { "keep": ["老川味"], "drop": [] }
+  },
+  {
+    "id": "not-restaurant-post",
+    "why": "Apartment-hunting post that names a deli in passing",
+    "title": "纽约找房血泪史",
+    "body": "看了十几套房子终于签约了！新公寓在East Village，楼下就是Katz's Delicatessen，地铁站走路3分钟。中介费真的太贵了，大家找房一定要注意……",
+    "expect": { "keep": [], "drop": ["Katz"] }
+  },
+  {
+    "id": "passing-mention",
+    "why": "Restaurant used only as a landmark",
+    "title": "今天在家做了红烧肉",
+    "body": "从Joe's Pizza门口路过买了点菜，回家做了红烧肉和番茄炒蛋，第一次做成功！附上菜谱👇",
+    "expect": { "keep": [], "drop": ["Joe's Pizza"] }
+  },
+  {
+    "id": "name-in-title",
+    "why": "Name only appears in the title",
+    "title": "纽约必吃｜Di Fara Pizza",
+    "body": "老爷爷亲手做的方形披萨，橄榄油和罗勒香气满满，排队一小时也值得！边缘酥脆到不行。",
+    "expect": { "keep": ["Di Fara"], "drop": [] }
+  },
+  {
+    "id": "warning-plus-praise",
+    "why": "Warning about A, praise for B",
+    "title": "避雷+推荐",
+    "body": "千万别去 Golden Dragon Palace，排队两小时，菜还是凉的😤 隔壁的 Wah Fung No.1 叉烧饭才$7，肉多汁香，良心！",
+    "expect": { "keep": ["Wah Fung"], "drop": ["Golden Dragon"] }
+  },
+  {
+    "id": "boilerplate-rec",
+    "why": "Recommendation should be the praise, not the address/hours/price lines",
+    "title": "唐人街神级牛肉面",
+    "body": "📍123 Mott St\n⏰11am-10pm\n💰$15/人\n☎️ (212) 555-0101\nXi'an Noodle House 的牛肉面汤底熬得超浓，手扯面劲道，辣油香而不燥，强推！",
+    "expect": { "keep": ["Xi'an Noodle"], "drop": [] }
+  },
+  {
+    "id": "hedge-high-expectations",
+    "why": "Hedged review",
+    "title": "Le Bernardin 体验",
+    "body": "米其林三星 Le Bernardin，摆盘很精致，可能是我期待太高了，吃完没有特别惊艳的感觉。",
+    "expect": { "keep": [], "drop": ["Le Bernardin"] }
+  },
+  {
+    "id": "drawback-clause",
+    "why": "'唯一的缺点' is still a complaint under the strict rule (Hirohisa slipped through this way)",
+    "title": "Hirohisa 午市套餐",
+    "body": "Hirohisa 的午市套餐性价比超高，刺身新鲜，天妇罗酥脆。它的缺点是只有中午有这个价格，晚上贵很多。",
+    "expect": { "keep": [], "drop": ["Hirohisa"] }
+  },
+  {
+    "id": "english-post",
+    "why": "English-language XHS post, multiple positives",
+    "title": "NYC brunch spots I keep going back to",
+    "body": "Clinton St. Baking Company - the blueberry pancakes are unreal, worth every minute of the wait.\nBuvette - tiny French spot, the croque madame is perfect.\nJack's Wife Freda - rosewater waffle is a must!",
+    "expect": { "keep": ["Clinton St", "Buvette", "Jack's Wife Freda"], "drop": [] }
+  },
+  {
+    "id": "out-of-city",
+    "why": "Not in NYC; the extractor should still extract (geo guard is a Places-side job) — tracked for visibility only",
+    "title": "新泽西宝藏中餐",
+    "body": "Edison 的 Chengdu 1 真的超正宗，口水鸡和担担面都是满分！开车从曼哈顿过来40分钟，值得。",
+    "expect": { "keep": ["Chengdu 1"], "drop": [] }
+  }
+]

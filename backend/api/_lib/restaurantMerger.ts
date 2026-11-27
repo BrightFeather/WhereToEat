@@ -37,6 +37,8 @@ export interface MergedRestaurant {
   /** WGS84 coordinates from the Places API; nullable when Places returned no `location`. */
   latitude: number | null;
   longitude: number | null;
+  /** Places `priceLevel` enum (e.g. PRICE_LEVEL_MODERATE); null when Places has none. */
+  priceLevel: string | null;
   /** Per-post source evidence — one entry per XHS post that mentioned this
    *  restaurant. Written to `xhs_sources` so the card can surface multiple
    *  creator quotes instead of only the top one. */
@@ -77,8 +79,10 @@ export function deduplicateAndRank(restaurants: EnrichedRestaurant[]): MergedRes
     const mostRecentPost = group.reduce((latest, r) =>
       r.postCreatedAt > latest.postCreatedAt ? r : latest
     );
+    // Card-face quote: from the best post by popularity × freshness.
     const recommendation =
-      group.find((r) => r.creatorRecommendation)?.creatorRecommendation ?? null;
+      [...group].sort((a, b) => sourceScore({ likes: b.likes, postCreatedAt: b.postCreatedAt }) - sourceScore({ likes: a.likes, postCreatedAt: a.postCreatedAt }))
+        .find((r) => r.creatorRecommendation)?.creatorRecommendation ?? null;
 
     // Prefer Places data from the highest-liked post that has it
     const placesData = group.find((r) => r.places)?.places ?? null;
@@ -100,7 +104,7 @@ export function deduplicateAndRank(restaurants: EnrichedRestaurant[]): MergedRes
 
     // Per-post evidence — dedupe by postUrl (same post can appear twice if
     // the scraper surfaces it from two different search pages). Keep the
-    // entry with the higher likes count.
+    // entry with the higher likes count; order by popularity × freshness.
     const byUrl = new Map<string, EnrichedRestaurant>();
     for (const r of group) {
       const prev = byUrl.get(r.postUrl);
@@ -113,7 +117,7 @@ export function deduplicateAndRank(restaurants: EnrichedRestaurant[]): MergedRes
         likes: r.likes,
         postCreatedAt: r.postCreatedAt ?? null,
       }))
-      .sort((a, b) => b.likes - a.likes);
+      .sort((a, b) => sourceScore(b) - sourceScore(a));
 
     merged.push({
       restaurantName: placesData?.googleDisplayName || best.restaurantName,
@@ -138,6 +142,7 @@ export function deduplicateAndRank(restaurants: EnrichedRestaurant[]): MergedRes
       instagramUrl: placesData?.instagramUrl ?? null,
       latitude:  placesData?.latitude  ?? null,
       longitude: placesData?.longitude ?? null,
+      priceLevel: placesData?.priceLevel ?? null,
       sources,
     });
   }
@@ -157,6 +162,19 @@ export function rankScore(r: {
   postCreatedAt: string | null;
 }): number {
   return r.mentionCount * 10 + r.totalLikes * recencyWeight(r.postCreatedAt);
+}
+
+/** Max XHS posts kept / served per restaurant (pipeline cap + weekly API trim). */
+export const MAX_XHS_SOURCES_PER_RESTAURANT = 10;
+
+/**
+ * Per-post ranking: popularity × freshness. Same recency curve as the deck
+ * ranking (1.0 for posts ≤7 days old, sliding linearly to 0.2 at 60+ days).
+ * Used to pick which posts a restaurant keeps (pipeline) and their display
+ * order (weekly API).
+ */
+export function sourceScore(s: { likes?: number | null; postCreatedAt?: string | null }): number {
+  return (s.likes ?? 0) * recencyWeight(s.postCreatedAt ?? null);
 }
 
 export function recencyWeight(postCreatedAt: string | null): number {

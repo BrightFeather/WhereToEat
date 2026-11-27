@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { logger, withRequestLogging } from '../_lib/logger';
 import { ok, err } from '../_lib/types';
 import { getBoroughNames } from '../_lib/cityRegions';
+import { sourceScore, MAX_XHS_SOURCES_PER_RESTAURANT } from '../_lib/restaurantMerger';
 
 const FRESHNESS_DAYS = 7;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -136,8 +137,16 @@ function attachSources(
     if (list) list.push(stripped);
     else sourcesById.set(s.restaurantId, [stripped]);
   }
+  // Per restaurant: XHS posts ranked by popularity × freshness, top
+  // MAX_XHS_SOURCES_PER_RESTAURANT (10); editorial sources (Eater / Resy)
+  // after them, untrimmed. The order is time-dependent (recency decays), so
+  // within one etag window a 304 can briefly carry yesterday's order.
   for (const row of rows) {
-    row.sources = sourcesById.get(row.id as string) ?? [];
+    const all = sourcesById.get(row.id as string) ?? [];
+    const byScore = (a: XHSSource, b: XHSSource) => sourceScore(b) - sourceScore(a);
+    const xhs = all.filter((x) => (x.sourceType ?? 'xiaohongshu') === 'xiaohongshu').sort(byScore).slice(0, MAX_XHS_SOURCES_PER_RESTAURANT);
+    const editorial = all.filter((x) => (x.sourceType ?? 'xiaohongshu') !== 'xiaohongshu').sort(byScore);
+    row.sources = [...xhs, ...editorial];
   }
   return rows;
 }

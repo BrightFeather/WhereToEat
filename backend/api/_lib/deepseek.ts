@@ -31,18 +31,44 @@ function readSecret(name: string): string | undefined {
 export const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-pro';
 export const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
 
-let client: OpenAI | null = null;
-function getClient(): OpenAI {
-  if (!client) {
+/**
+ * Provider switch. `LLM_PROVIDER=fireworks` routes the same DeepSeek prompts
+ * to Fireworks (OpenAI-compatible), default model DeepSeek V4.1 Flash. Key
+ * from `FIREWORKS_API_KEY` (env or secrets.env), or a file path in
+ * `FIREWORKS_API_KEY_FILE`. Model override: `FIREWORKS_MODEL`. Read per call,
+ * so a script can flip providers at runtime (see scripts/bench-llm.ts).
+ */
+export type LlmProvider = 'deepseek' | 'fireworks';
+export const FIREWORKS_BASE_URL = 'https://api.fireworks.ai/inference/v1';
+export const FIREWORKS_DEFAULT_MODEL = 'accounts/fireworks/models/deepseek-v4p1-flash';
+
+export function llmProvider(): LlmProvider {
+  return process.env.LLM_PROVIDER === 'fireworks' ? 'fireworks' : 'deepseek';
+}
+
+export function llmModel(p: LlmProvider = llmProvider()): string {
+  return p === 'fireworks' ? (process.env.FIREWORKS_MODEL ?? FIREWORKS_DEFAULT_MODEL) : DEEPSEEK_MODEL;
+}
+
+const clients: Partial<Record<LlmProvider, OpenAI>> = {};
+function getClient(p: LlmProvider = llmProvider()): OpenAI {
+  if (clients[p]) return clients[p]!;
+  if (p === 'fireworks') {
+    const keyFile = process.env.FIREWORKS_API_KEY_FILE;
+    const apiKey = readSecret('FIREWORKS_API_KEY')
+      ?? (keyFile && fs.existsSync(keyFile) ? fs.readFileSync(keyFile, 'utf8').trim() : undefined);
+    if (!apiKey) throw new Error('FIREWORKS_API_KEY not found (env, secrets.env, or FIREWORKS_API_KEY_FILE).');
+    clients[p] = new OpenAI({ apiKey, baseURL: FIREWORKS_BASE_URL });
+  } else {
     const apiKey = readSecret('DEEP_SEEK_API') ?? readSecret('DEEPSEEK_API_KEY');
     if (!apiKey) {
       throw new Error(
         `DEEP_SEEK_API not found. Set env var or add to ${SECRETS_PATH}.`,
       );
     }
-    client = new OpenAI({ apiKey, baseURL: DEEPSEEK_BASE_URL });
+    clients[p] = new OpenAI({ apiKey, baseURL: DEEPSEEK_BASE_URL });
   }
-  return client;
+  return clients[p]!;
 }
 
 /** Tolerant JSON extractor — strips fences / prose around a JSON value. */
@@ -75,8 +101,9 @@ export async function deepseekJson(
   while (true) {
     attempt++;
     try {
-      const res = await getClient().chat.completions.create({
-        model: DEEPSEEK_MODEL,
+      const provider = llmProvider();
+      const res = await getClient(provider).chat.completions.create({
+        model: llmModel(provider),
         messages: [
           { role: 'system', content: systemInstruction },
           { role: 'user', content: userPrompt },
@@ -85,7 +112,8 @@ export async function deepseekJson(
         max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         // DeepSeek V4 defaults to thinking-on, which silently eats max_tokens.
-        // Same chokepoint as feedback-agent/src/llm.ts.
+        // Same chokepoint as feedback-agent/src/llm.ts. Fireworks honours the
+        // same field for its DeepSeek models (verified 2026-11-26).
         // @ts-expect-error — DeepSeek-specific extra; OpenAI SDK passes unknown fields through.
         thinking: { type: 'disabled' },
       });

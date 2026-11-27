@@ -10,6 +10,14 @@ The next wave of work, ranked. Pick from the top.
 
 > **Top of the queue today:** P3 (Favorites UI — slot 12 is open, ~1h to wire up) → P4 (weekly auto-run launchd, ~30min) → P7 (device test M10/M13, needs a real iPhone for a day). Everything past P4 is a "want", not a "need".
 
+### Recently shipped (2026-11-26)
+
+| # | Task | Done | Notes |
+|---|------|------|-------|
+| TF-EXPIRED | App inaccessible on iPhone — TestFlight build expired | 2026-11-26 | No code changes; last upload was build 27 (2026-05-05), ~205 days ago — well past TestFlight's 90-day auto-expiry window, which is why the app stopped opening. Fix was a plain re-release (build 28) via `scripts/ios/testflight.sh`, resumed manually after export (archive doesn't need to be redone — see `~/.claude/projects/.../memory/project_testflight_pipeline.md`). **Found two Apple-account blockers along the way, both needing the Account Holder to act in a browser — not fixable from the CLI:** (1) `exportArchive` failed with "Unable to process request - PLA Update available" / "No signing certificate iOS Distribution found" — fixed by accepting the pending Program License Agreement at developer.apple.com/account. (2) After that, `altool --validate-app` failed with "Cannot determine the Apple ID from Bundle ID" and `altool --list-apps` returned zero apps for the API key — turned out to be a **second, separate** agreement (Paid Apps / Agreements, Tax and Banking) still pending; accepting that one unblocked both the API key and the upload. **Takeaway:** "TestFlight build expired" and "an Apple agreement needs re-signing" can compound — if a re-release hasn't happened in months, check Agreements, Tax, and Banking for pending items before assuming the pipeline itself is broken. Build 28 uploaded successfully, now processing in App Store Connect. |
+| LAT-1 | First-card latency: cache + prefetch pass | 2026-11-26 (iOS in TestFlight build 30; backend deployed as `whereto-ph3orpehf`, prod verified nyc 162 / bay 133) | **iOS:** (1) `DiscoveryViewModel.loadCards` no longer awaits `/api/user/reservations` + `/api/user/blocks` before building the deck. It builds from the last-known ids (`ReservationService.lastKnownReservedIds/BlockedIds`, persisted per user id) and `applyRemoteFilters` prunes only cards the user hasn't reached once the fresh answers land. The fetchers fall back to last-known instead of `[]` on failure. (2) `ImageCache.data(for:)` / `prefetch(_:)`: shared loader with in-flight dedup, used by `CachedAsyncImage`. It prefetches the top 25 photos whenever `WeeklyRestaurantService.status` publishes, plus the 3 Home picks and the current + next 3 Discovery cards. (3) `WeeklyCache.isWarm` is now 72h (was 24h), so `bootstrap` blocks on the network only after 72h or a Monday rollover. **Backend (`weekly.ts`):** 8 sequential DB round-trips → 2 on a cache miss. Removed the debug-only full-table `allForDebug` scan, ran the etag pair in parallel, and moved latest-run / running-run / stale-run reap / restaurants / sources into one `Promise.all`. `fetchSources` replaces `hydrateSources` and uses a city subquery, so it no longer waits for row ids. Verified locally against SQLite: identical restaurants for nyc (162) and bay (133), and the 304 path still works. Deployed from a snapshot (previous prod + `weekly.ts` only). Prod checks: same ids and source counts as the old code, 304 on `If-None-Match` for both cities. |
+| LAT-2 | Mirror Places photos to Vercel Blob | 📋 Todo | Found during LAT-1. Prod nyc deck: 133/162 `photoUrl`s are raw `places.googleapis.com/.../media?key=…` URLs, not Blob. Each one costs a Places request plus a 302 before the image loads, is billed per load (prefetch now loads up to 25 per new deck), and exposes the Places API key in the public `/weekly` response. In a sample, ~25% of prod URLs (11 of the top 25 in local SQLite) return **400** (expired photo name) and render as a permanent gray card. Fix: run `npm run push-photos` + `npm run migrate-places-photos` for the new rows, then `sync-runs-to-neon.ts`. Consider making mirroring part of the pipeline. |
+
 ### Active queue (Todo / Blocked / Partial)
 
 | Rank | # | Task | Status | Why now |
@@ -37,12 +45,82 @@ The next wave of work, ranked. Pick from the top.
 | MISENRICH-BACKFILL | Backfill scan: re-enrich existing rows whose Places match was a non-food venue | Done: Oti + Bibliotheque (was "Office of Technology and Innovation" + "NYPL Schwarzman"). The fix in `placesEnricher.ts` uses `includedType` over a food-type fallback list with `strictTypeFiltering: true`, so future ingests can't repeat this. **Backfill TODO:** scan all 591 rows by re-querying Places by current `google_place_id` to fetch `primaryType`; flag any whose primaryType isn't in `FOOD_PRIMARY_TYPES` and re-enrich from the original recommendation text. Possibly small (we caught 2 manually). |
 | MISENRICH-EXAMPLES | Public Display of Affection looked suspicious but is real (Park Slope vegan pizza) | Notable false alarm — kept as a reminder that some "weird" restaurant names ARE real. Always cross-reference against the recommendation text + address before deleting. |
 
+### XHS parser improvement plan (audit 2026-11-26, nothing implemented yet)
+
+Audit of `xhsScraper.ts` → `llmExtractor.ts` → `placesEnricher.ts` → `restaurantMerger.ts` → `scripts/test-pipeline.ts`. No schema changes needed for any item. Ordered by impact on "fresh + quality".
+
+**State at audit time:** last real harvest = `pipeline_runs` 2026-04-19 (280 posts → 138 restaurants). The 2026-05-03 run hit captcha and got 0 posts. `data/pipeline.log` has no entries after 2026-05-03, so the Monday 6am crontab isn't firing (likely the Mac is asleep; cron doesn't catch up on missed runs). 137 of 358 XHS source rows are >1 year old (oldest 2020-06), 30 have an empty recommendation, and 73 of 594 restaurants have a null cuisine (several aren't restaurants: `1 Hotel Brooklyn Bridge`, `M&M Grocery Corp.`, Starbucks Reserve).
+
+| # | Task | Notes |
+|---|------|-------|
+| PARSE-0 | Make the pipeline actually run (folds in **P4**) | launchd `StartCalendarInterval` runs on wake, unlike cron. Spread the captcha budget (~70 searches/session, ≥4h cooldown) over the week, e.g. ~15 searches per day, instead of one Monday burst. Log `xhs.search.cli.failed` captcha counts so a silent 0-post run is visible. |
+| PARSE-1 | Search for fresh posts, not evergreen ones | ✅ via browser ingest. The server-side 半年内 filter plus most-liked sort, with no wasted reads on old posts. The legacy CLI path still uses `--sort popular`. |
+| PARSE-2 | Fix fake-fresh fallback | `searchXhsPosts`: when `readNote` fails, the search-metadata fallback sets `body: ''` and `createdAt: now`, so an old post looks brand-new and the LLM extracts from the title alone. Drop these posts. Also, a note with no `time` currently skips the age filter; drop those too. |
+| PARSE-3 | Refresh recency on existing restaurants | 🔄 Partial (2026-11-26). The upsert moves `post_created_at` forward to the newest post. **Not done:** evicting the oldest or weakest source at the 5-source cap. New posts are still skipped once a restaurant has 5. |
+| PARSE-4 | Write every source and make re-runs idempotent | ✅ 2026-11-26 (`scripts/test-pipeline.ts`). Each source is written with its own likes and date; counts are bumped only by sources actually added. New rows also get `features` / rating / IG / lat-lng / `price_level`, which the old INSERT dropped. Existing rows have those filled when empty. |
+| PARSE-5 | Per-restaurant sentiment instead of whole-post drop | `extractRestaurantData` drops the whole post on `hasComplaint`, so one gripe in a 10-place listicle loses 9 good places. Ask for `sentiment ∈ {positive, mixed, negative, passing_mention}` per restaurant and keep only `positive`. The "drop on any complaint" rule is unchanged, and yield goes up. `passing_mention` also removes "hotel we stayed at" noise. |
+| PARSE-6 | Venue + geography guards | Reject Places `primaryType` of lodging, grocery, supermarket, etc. Restrict Places search with a `locationRestriction` rectangle around the 5 boroughs and drop results with a null borough. This catches #纽约美食 posts about NJ, Long Island, Boston, etc. |
+| PARSE-7 | Name grounding + English alias | Extractor returns `nameEvidence` (an exact substring of the post; drop if it isn't really there) and `englishName` (used only in the Places query, not stored). Verify Places `displayName` similarity before adopting the match. This helps Chinese-only names that match poorly or not at all today. |
+| PARSE-8 | Cleaner recommendation text | Strip `#…[话题]#`, emoji-only lines, and address/hotel boilerplate. Ask for dish-specific praise ("what to order"). If the cleaned quote is empty, fall back to the next-best source rather than storing null. |
+| PARSE-9 | Sponsored / giveaway filter | Add `isSponsored` (合作, 广告, 探店邀请, 品牌合作, 抽奖, 粉丝福利) to the extractor output and drop those posts. |
+| PARSE-10 | Better query set | Replace the 3 generic hashtags with a rotating list: 纽约新店 / 纽约新开 / 纽约探店 / 曼哈顿美食 / 法拉盛美食 / 布鲁克林美食 / 纽约brunch / 纽约约会餐厅 + cuisine terms. "新店/新开" queries are the main freshness lever. |
+| PARSE-11 | Engagement + creator dedup in ranking | Use saves (`collected_count`) and comments as well as likes, and likes-per-day rather than raw likes. Count one creator posting the same place several times as one mention (`xhs_sources.author` exists). **Unverified:** whether `xhs read` returns `collected_count` / `tag_list` / a POI tag. Check one note's JSON before building on it. |
+| PARSE-12 | Golden eval set — 🔄 harness written, baseline NOT run | `backend/scripts/eval-extractor.ts` + `backend/scripts/eval/extractor-cases.json` (18 hand-written regression posts: listicle-with-one-gripe, hotel, sponsored, giveaway, lukewarm, X-not-as-good-as-Y, grocery, Chinese-only name, passing mention, boilerplate rec, hedges, …). Run: `npx ts-node -T scripts/eval-extractor.ts`. The baseline run was interrupted on 2026-11-26 when work switched to scraper stability. Next steps: run the baseline, then apply PARSE-5/7/8/9 to the prompt and re-run. Add real posts as a second fixture file once scraping works again (see XHS-BROWSER below); target ~50 labelled real posts. After any prompt change, re-run `npm run scrub-negative`: the DB still holds a hedge ("它的缺点是…" on Hirohisa) that slipped through topup. |
+
+### XHS scraping stability — rednote split (diagnosed 2026-11-26)
+
+**Root cause of "logged in but parser can't get a token":** from a US IP, `www.xiaohongshu.com` now 302-redirects to `www.rednote.com`. A browser login therefore produces `.rednote.com` cookies. The `xhs` CLI (v0.6.4) reads only `.xiaohongshu.com` cookies and calls `edith.xiaohongshu.com`, which answers a rednote session with `Set-Cookie: web_session=; Max-Age=0`. Copying the rednote cookies into the CLI store was tried and fails the same way. Under XHS's 2025-12-08 user agreement, accounts registered with a non-+86 number after that date are "Rednote users", a separate product line. rednote uses `webapi.rednote.com` (API) and `as.rednote.com` (security) but the same URL paths, API paths (`/api/sns/web/v1/search/notes`, …), response schema and xsec_token mechanism. Anonymous rednote `search_result` SSR contains no notes, so search needs a login on either domain. Refs: xpzouying/xiaohongshu-mcp#579, jackwener/OpenCLI#1136.
+
+| # | Task | Status / notes |
+|---|------|----------------|
+| XHS-BROWSER-0 | Stopgap: try `xhs login --qrcode` | 📋 30-second test. QR login authenticates against xiaohongshu.com directly. It may work if the account is +86 and registered before 2025-12-08. It is still fragile because it relies on reverse-engineered signing plus cookie TTL. |
+| XHS-BROWSER-1 | Probe: does logged-in rednote.com search return the NYC posts we need? | ✅ 2026-11-26. Yes: Chinese NYC food posts, fresh dates, full bodies, likes, saves and comments. `scripts/xhs-browser-probe.ts`. |
+| XHS-BROWSER-2 | Browser scraper module | ✅ 2026-11-26. `api/_lib/xhsBrowser.ts` (attaches to a long-lived Chrome over CDP on :9333, with a launch fallback) + `scripts/xhs-browser-ingest.ts` (count / read phases, `CITY` env). Uses the server-side 最多点赞 + 半年内 filters. Runbook: `backend/CLAUDE.md § XHS browser ingest`. The `xhs` CLI path in `xhsScraper.ts` is untouched; it is still used by `import-xhs` and the legacy `test-pipeline` path without `POSTS_FILE`. |
+| XHS-BROWSER-3 | Session health check + loud failure | 🔄 Partial. `ensureLoggedIn()` waits for a non-guest `/user/me`, captcha pages pause for a human, and 5 failed reads in a row abort. **Still TODO:** macOS notification on failure, and making `run-pipeline.sh` use the browser ingest. |
+| XHS-BROWSER-4 | Raw post cache on disk | ✅ 2026-11-26. `data/xhs-raw/notes/<id>.json` (note + its search card); reads skip cached ids. |
+
+### NYC 6-month browser ingest — 2026-11-26
+
+| # | Task | Status |
+|---|------|--------|
+| NYC-INGEST-1 | Ingest NYC posts from the last 6 months with ≥50 likes | 🔄 Partial. Count: **940** unique posts across 15 keywords (lower bound; 4 keywords hit the ~120-result cap). Read the top 300 (≥175 likes): **151 read**, then a captcha at about 150 reads went unsolved. Those 151 → DeepSeek → **190 restaurants → 167 merged → 106 new + 61 updated rows** in local SQLite (backup: `backend/data/wheretoeat.db.pre-browser-ingest-20261126`). **Remaining:** `CITY=nyc MODE=read MAX_POSTS=300` reads the rest (cached notes are skipped), then re-run the pipeline with the same `POSTS_FILE`. Extraction is cached, so only new posts hit DeepSeek. |
+| NYC-INGEST-2 | Note: the NYC deck is now only this run's restaurants | ℹ️ `weekly.ts` serves rows whose `pipeline_run_id` = the city's latest completed run, so the NYC deck is now these 162 served rows (all from posts ≤6 months old) instead of the previous fallback to all 594. This is by design ("weekly deck"); flag it if the older rows should stay visible. |
+| NYC-INGEST-3 | Sync to Neon + deploy | ✅ 2026-11-26 (see BA-P1-4). **Incident:** prod `/api/restaurants/weekly` returned 500 for ~3 min (about 20:54–20:57 local). The first deploy snapshot picked up another session's half-finished `weekly.ts` rewrite (`ReferenceError: latestCompleted`). Fixed by redeploying HEAD's `weekly.ts` plus only this session's hunks. That session's rewrite is still undeployed in the working tree. |
+
+### Sources per restaurant: 10, ranked by popularity × freshness — 2026-11-26
+
+| # | Task | Status |
+|---|------|--------|
+| SRC-10-1 | Raise the per-restaurant XHS post limit 5 → 10, ranked by popularity × freshness | ✅ 2026-11-26. Deployed `whereto-gl9fgco6p` (`weekly.ts` + `restaurantMerger.ts` only, diffed against the previous prod snapshot). Prod verified: nyc 200 / 162, bay 200 / 133, sources in score order, 304 OK. `restaurantMerger.sourceScore = likes × recencyWeight(postCreatedAt)` (1.0 for ≤7 days → 0.2 at 60+ days) + `MAX_XHS_SOURCES_PER_RESTAURANT = 10`. The pipeline admits a post when the restaurant has <10, or when the post would rank in its top 10; nothing is deleted. `weekly.ts` serves the top 10 XHS posts by score, then editorial sources. The merger's card-face `recommendation` comes from the best-scoring post (new rows only). iOS `RestaurantDetailView.sortedSources` keeps the server's order (it used to sort by quote length); shipped in TestFlight build 31. Verified locally: score-ordered for both cities. |
+| SRC-10-2 | Backfill posts dropped by the old cap of 5 | ✅ Only one in this run (Yamada, 1-like post), inserted locally. **Not yet on Neon**: run `SINCE=2026-11-26 npx ts-node -T scripts/sync-runs-to-neon.ts` after the other session's `mirror-photos` finishes, then `npm run mirror-photos`. |
+| SRC-10-3 | Top-up script fill targets | ℹ️ `topup-xhs-sources.ts` (3) and `topup-asian-xhs.ts` (5) are fill targets, not caps. Left as is; set `TARGET_PER_RESTAURANT=10` on the next run if more depth is wanted. Older top-up data already has restaurants with up to 38 XHS posts; the API now trims those to the top 10. |
+
+### LLM provider benchmark — 2026-11-26
+
+| # | Task | Status |
+|---|------|--------|
+| LLM-FW-1 | Try DeepSeek Flash on Fireworks for speed | ✅ Done; **not adopted**. `LLM_PROVIDER=fireworks` switch in `_lib/deepseek.ts`; `scripts/bench-llm.ts`. Flash runs at 0.9 s/call (ultrafast 0.4 s) vs about 2 s for V4-Pro, but finds only 54–64% of Pro's restaurants (missed Okawa Sushi, Chef Chu's, Jean-Georges, Nubeluz). Revisit if Fireworks lists a V4-Pro model, or for the low-stakes classifier calls. |
+| LLM-FW-2 | Store the Fireworks key properly | 📋 Today the benchmark reads it from a Downloads file via `FIREWORKS_API_KEY_FILE`. If Fireworks is ever used for real, add `FIREWORKS_API_KEY` to `~/.config/wte-feedback-agent/secrets.env`. |
+
+### Bay Area expansion (city `bay`) — started 2026-11-26
+
+Full plan, decisions and status: **`agent_docs/bay-area-expansion.md`**. Summary:
+
+| # | Task | Status |
+|---|------|--------|
+| BA-P0-1..5 | City-aware regions, Places, extractor prompt, ingest keywords, pipeline `CITY` | ✅ 2026-11-26 (NYC behaviour unchanged) |
+| BA-P0-6 | Count → read → pipeline for `bay` into local SQLite | ✅ 139 rows (133 served) across SF 67 / South Bay 37 / Peninsula 17 / East Bay 12 / North Bay 1 |
+| BA-P1-1 | `weekly.ts` city filter for deck + etag | ✅ 2026-11-26 |
+| BA-P1-2 | `/api/locations?city=bay` | ✅ (automatic from `cityRegions.ts`) |
+| BA-P1-3 | iOS city key from override / GPS (`LocationService.cityKey`, `WeeklyRestaurantService.activeCity`) | ✅ shipped in TestFlight build 29 |
+| BA-P1-4 | Sync `bay` + new NYC rows to Neon, and deploy the `weekly.ts` change | ✅ 2026-11-26. `scripts/sync-runs-to-neon.ts`: Neon now has nyc 700 / bay 139 rows and +338 sources. Deployed `whereto-esffy7jmh` (city filter + `NULLS LAST`). Prod verified: nyc 200 / ready / 162, bay 200 / ready / 133. |
+
 ### Smaller polish backlog (post-MVP "wants")
 
 | # | Task | Notes |
 |---|------|-------|
 | N5 | Settings → Clear Cache button | `WeeklyCache.invalidate()` exists; just needs a Settings row. Per `DESIGN-CACHING.md` § Open follow-ups. |
-| N6 | Photo prefetch on weekly fetch | Pre-warm `URLCache` for the top-N restaurants so card photos render instantly on swipe. Per `DESIGN-CACHING.md` § Open follow-ups. |
+| N6 | Photo prefetch on weekly fetch | ✅ 2026-11-26. Shipped as part of **LAT-1** (see Recently shipped). |
 | N7 | Map-pin clustering on Find tab | Currently shows N individual pins; cluster when zoomed out. |
 | N8 | Tap a price chip → filter the deck to that tier | Cheap UX win once Favorites and the active queue are out of the way. |
 | U3–U8 | Smaller iOS polish items (card counter, copy pass, button hierarchy, etc.) | See § iOS — UI Polish further below. |

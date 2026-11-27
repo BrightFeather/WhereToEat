@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from './logger';
+import { getCityMeta, regionForLocality, type LatLngBounds } from './cityRegions';
 import type { ExtractedRestaurant } from './llmExtractor';
 import type { CuisineKey } from './cuisines';
 import {
@@ -14,7 +15,7 @@ export interface PlacesResult {
   googleMapsUrl: string;
   googleDisplayName: string;
   address: string | null;
-  borough: string | null;         // Manhattan / Brooklyn / Queens / Bronx / Staten Island
+  borough: string | null;         // NYC: Manhattan / Brooklyn / …  ·  bay: San Francisco / East Bay / Peninsula / South Bay / North Bay
   neighborhood: string | null;    // specific NYC neighborhood (e.g. Long Island City, Chinatown)
   websiteUrl: string | null;
   reservable: boolean;
@@ -238,7 +239,26 @@ const FOOD_PRIMARY_TYPES = new Set([
   'food_court', 'hamburger_restaurant', 'fried_chicken_restaurant', 'taco_restaurant',
 ]);
 
-async function searchPlace(query: string): Promise<PlacesResult | null> {
+function insideBounds(b: LatLngBounds, lat: unknown, lng: unknown): boolean {
+  return typeof lat === 'number' && typeof lng === 'number'
+    && lat >= b.low.latitude && lat <= b.high.latitude
+    && lng >= b.low.longitude && lng <= b.high.longitude;
+}
+
+/**
+ * Bay Area region + neighborhood. SF → its neighborhood; elsewhere the city
+ * name (Places `locality`) is the neighborhood and maps to a region.
+ */
+function bayRegionAndNeighborhood(components: AddressComponent[] | undefined): { borough: string | null; neighborhood: string | null } {
+  const locality = components?.find((c) => c.types?.includes('locality'))?.longText ?? null;
+  const borough = regionForLocality('bay', locality);
+  const neighborhood = locality === 'San Francisco' ? extractNeighborhood(components) : locality;
+  return { borough, neighborhood };
+}
+
+async function searchPlace(query: string, city = 'nyc'): Promise<PlacesResult | null> {
+  const meta = getCityMeta(city);
+  const bias = meta.bounds ? { locationBias: { rectangle: meta.bounds } } : {};
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY not set');
 
@@ -252,7 +272,7 @@ async function searchPlace(query: string): Promise<PlacesResult | null> {
   for (const includedType of FOOD_TYPE_FALLBACKS) {
     const r = await axios.post(
       PLACES_API_BASE,
-      { textQuery: query, languageCode: 'en', includedType, strictTypeFiltering: true },
+      { textQuery: query, languageCode: 'en', includedType, strictTypeFiltering: true, ...bias },
       { headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': FIELDS } }
     );
     const candidates = r.data?.places;
@@ -261,7 +281,7 @@ async function searchPlace(query: string): Promise<PlacesResult | null> {
   if (!place) {
     const r = await axios.post(
       PLACES_API_BASE,
-      { textQuery: query, languageCode: 'en' },
+      { textQuery: query, languageCode: 'en', ...bias },
       { headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': FIELDS } }
     );
     const candidates = r.data?.places;
@@ -276,6 +296,13 @@ async function searchPlace(query: string): Promise<PlacesResult | null> {
     }
   }
   if (!place) return null;
+  if (meta.bounds && !insideBounds(meta.bounds, place.location?.latitude, place.location?.longitude)) {
+    logger.warn('places.rejected_out_of_area', { query, city, displayName: place.displayName?.text, address: place.formattedAddress });
+    return null;
+  }
+  const area = city === 'bay'
+    ? bayRegionAndNeighborhood(place.addressComponents)
+    : { borough: extractBorough(place.addressComponents), neighborhood: extractNeighborhood(place.addressComponents) };
   const photos: string[] = (place.photos ?? [])
     .slice(0, 5)
     .map((p: { name: string }) =>
@@ -316,8 +343,8 @@ async function searchPlace(query: string): Promise<PlacesResult | null> {
     googleMapsUrl: place.googleMapsUri,
     googleDisplayName: place.displayName?.text ?? '',
     address: place.formattedAddress ?? null,
-    borough: extractBorough(place.addressComponents),
-    neighborhood: extractNeighborhood(place.addressComponents),
+    borough: area.borough,
+    neighborhood: area.neighborhood,
     websiteUrl,
     reservable: place.reservable ?? false,
     photoUrl,
@@ -336,9 +363,11 @@ async function searchPlace(query: string): Promise<PlacesResult | null> {
 
 // Try multiple query strategies, most specific first
 export async function enrichWithPlaces(
-  restaurant: ExtractedRestaurant
+  restaurant: ExtractedRestaurant,
+  city = 'nyc',
 ): Promise<PlacesResult | null> {
   const name = restaurant.restaurantName;
+  const meta = getCityMeta(city);
 
   const queries: string[] = [];
 
@@ -346,13 +375,13 @@ export async function enrichWithPlaces(
     queries.push(`${name} ${restaurant.address}`);
   }
   if (restaurant.locationHint) {
-    queries.push(`${name} ${restaurant.locationHint} New York`);
+    queries.push(`${name} ${restaurant.locationHint} ${meta.placesHintSuffix}`);
   }
-  queries.push(`${name} New York City`);
+  queries.push(`${name} ${meta.placesFallbackSuffix}`);
 
   for (const query of queries) {
     try {
-      const result = await searchPlace(query);
+      const result = await searchPlace(query, city);
       if (result) {
         logger.success('places.enriched', { name, query, placeId: result.googlePlaceId });
         return result;

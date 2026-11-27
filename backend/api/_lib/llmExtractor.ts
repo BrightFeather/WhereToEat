@@ -3,6 +3,7 @@ import { logger } from './logger';
 import { CUISINE_KEYS, isCuisineKey, type CuisineKey } from './cuisines';
 import { FEATURE_KEYS, isFeatureKey, canonicalizeFeatures, type FeatureKey } from './features';
 import { deepseekJson } from './deepseek';
+import { getCityMeta } from './cityRegions';
 
 export interface ExtractedRestaurant {
   restaurantName: string;
@@ -23,7 +24,7 @@ export interface ExtractedRestaurant {
   likes: number;
 }
 
-const SYSTEM_PROMPT = `You are a restaurant data extractor and classifier. You will be given a social-media post about food in New York City. Extract ALL restaurants mentioned and CLASSIFY each one into the closed vocabularies below. Return valid JSON only.
+const SYSTEM_PROMPT_TEMPLATE = `You are a restaurant data extractor and classifier. You will be given a social-media post about food in __CITY__. Extract ALL restaurants mentioned and CLASSIFY each one into the closed vocabularies below. Return valid JSON only.
 
 CUISINE_KEYS (pick ONE per restaurant, or null if nothing fits):
 ${CUISINE_KEYS.join(', ')}
@@ -67,12 +68,17 @@ Rules:
  * `[]` so the entire post is dropped at ingest. The user's rule is "drop on
  * any complains" — so we err on the side of dropping.
  */
-export async function extractRestaurantData(post: RawXhsPost): Promise<ExtractedRestaurant[]> {
+/** City-specific system prompt; NYC yields the original text verbatim. */
+function systemPromptFor(city: string): string {
+  return SYSTEM_PROMPT_TEMPLATE.replace('__CITY__', getCityMeta(city).displayName);
+}
+
+export async function extractRestaurantData(post: RawXhsPost, city = 'nyc'): Promise<ExtractedRestaurant[]> {
   const userPrompt = `Title: ${post.title}
 Content: ${post.body}`;
 
   try {
-    const data = (await deepseekJson(SYSTEM_PROMPT, userPrompt, 4096)) as {
+    const data = (await deepseekJson(systemPromptFor(city), userPrompt, 4096)) as {
       isRestaurantPost: boolean;
       hasComplaint?: boolean;
       restaurants: Array<{
@@ -129,13 +135,14 @@ Content: ${post.body}`;
 // DeepSeek paid tier is high RPM; 200ms delay is plenty.
 export async function extractBatch(
   posts: RawXhsPost[],
-  delayMs = 200
+  delayMs = 200,
+  city = 'nyc',
 ): Promise<ExtractedRestaurant[]> {
   const results: ExtractedRestaurant[] = [];
 
   for (let i = 0; i < posts.length; i++) {
     logger.success('llm.extract.progress', { current: i + 1, total: posts.length });
-    const extracted = await extractRestaurantData(posts[i]);
+    const extracted = await extractRestaurantData(posts[i], city);
     results.push(...extracted);
     if (i < posts.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));

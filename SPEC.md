@@ -54,6 +54,7 @@ Defaults for the fields an onboarding flow would have collected come from `UserP
 - **Override:** user pins a specific city in Settings → persists until cleared
 - **Eater city:** auto-resolved from current location or city override (no separate config)
 - Active override shown as banner in-app: *"Showing restaurants in New York, NY"*
+- **City key (2026-11-26).** The weekly deck is per city: `nyc` or `bay` (SF Bay Area). iOS resolves it in `LocationService.cityKey(override:current:)`: the Settings override coordinate first, then GPS. Inside the Bay Area box (lat 36.95–38.65, lng −123.15…−121.45) the key is `bay`; anything else, or no location, is `nyc`. `WeeklyRestaurantService.activeCity` follows changes (new GPS fix, override set or cleared), resets to `building`, and re-bootstraps. Home reloads the region chips (`/api/locations?city=`) and Discovery rebuilds its deck. Bay Area regions fill the "borough" slot: San Francisco · East Bay · Peninsula · South Bay · North Bay. See `agent_docs/bay-area-expansion.md`.
 
 ---
 
@@ -91,7 +92,7 @@ User-scoped tables are defined in `backend/scripts/migrate.ts` (SQLite) and `bac
 ### Source of truth + sync contract
 
 - **Local (iOS) is the source of truth for the write path.** `ReservationViewModel.saveManualBooking` persists to `WeeklySession` (UserDefaults) synchronously, then posts to `/api/user/reservations` fire-and-forget. If the push fails, nothing is rolled back — the user's booking is already saved. Blocks follow the same pattern (`DiscoveryViewModel.block()` updates local `swipedCards` + `remoteBlockedIds` immediately, then fire-and-forget POSTs to `/api/user/blocks`).
-- **Backend is the source of truth for hydration.** On launch, `RootView.task` calls `ReservationService.shared.syncFromServer()`. Rows from `GET /api/user/reservations` are bucketed into their owning week-of-Monday `WeeklySession` and upserted by id, then `.weeklySessionUpdated` is posted so `HomeView` and `BookingsListView` re-render. The Discovery deck additionally pulls `GET /api/user/reservations` + `GET /api/user/blocks` in parallel on each `loadCards` so the filter set stays fresh.
+- **Backend is the source of truth for hydration.** On launch, `RootView.task` calls `ReservationService.shared.syncFromServer()`. Rows from `GET /api/user/reservations` are bucketed into their owning week-of-Monday `WeeklySession` and upserted by id, then `.weeklySessionUpdated` is posted so `HomeView` and `BookingsListView` re-render. The Discovery deck additionally pulls `GET /api/user/reservations` + `GET /api/user/blocks` in parallel on each `loadCards` so the filter set stays fresh. It builds the deck from the last-known ids first and doesn't wait for those requests (see § Deck filter sources).
 - **Favorites** share the same pattern; only the storage endpoints ship today (UI for remote-synced favorites is deferred until auth lands).
 - **Seen-today** is deliberately device-local (`SeenService` in `UserDefaults`) and is **not** synced — cross-device repeat cards within a single day are an acceptable tradeoff versus per-swipe DB writes. TTL is 1 day by construction (keys are stamped with the ISO date; older keys GC'd on next read).
 
@@ -537,6 +538,10 @@ The detail view's source-stack header (`sourcesHeaderLabel`) mirrors these exact
 4. **`WeeklySession.swipedCards` (iOS `UserDefaults`)** — existing per-week swipe history. Covers the "dislike reappears next week" and "bookmark stays in deck" rules above.
 5. **`UserProfile.discoverySources`** (iOS `UserDefaults`) — the set of `xhs_sources.source_type` values the user has opted into in Settings → Recommendation Sources. A restaurant is in the deck iff it has ≥1 source row whose type is in the set; restaurants with an empty `sources` array fall back to `xiaohongshu` (legacy default). Custom-list restaurants bypass this filter entirely — the user added them on purpose. Default set: all three known sources (`xiaohongshu`, `eater`, `resy_blog`); same filter is applied in `HomeViewModel.homePicks`. Disabling every source empties the feed by design — Settings shows a footer warning when the set is empty.
 
+**Timing of the server signals (1–2), since 2026-11-26:** the deck does not wait for them. `loadCards` builds it right away from the last ids the server returned (`ReservationService.lastKnownReservedIds` / `lastKnownBlockedIds`, persisted in `UserDefaults` per user id). When the fresh answers arrive, `applyRemoteFilters` drops newly reserved or blocked restaurants from the cards the user hasn't reached yet. The card on screen and the already-swiped cards stay as they are. A restaurant un-reserved or un-blocked elsewhere returns on the next `loadCards`. If either request fails, the last-known set is used instead of an empty one.
+
+**Photo prefetch:** `ImageCache.prefetch` warms the photo cache for the top 25 restaurants when the weekly deck loads, the 3 Home picks, and the current + next 3 Discovery cards. A card that appears while its photo is being prefetched waits on that download rather than starting a second one. The weekly cache's warm tier is 72h; see `DESIGN-CACHING.md` § Freshness model.
+
 ### Xiaohongshu deep-link
 
 When a card shows a 小红书 "Creator says" quote, tapping it calls `XhsURLOpener.open(postURL)`:
@@ -693,6 +698,10 @@ One codebase, two homes. Locally, `vercel dev` against `backend/data/wheretoeat.
 
 **iOS base URL.** Defaults to the prod Vercel URL. For active local backend dev, set `dev_api_base_url` in `UserDefaults` (or `API_BASE_URL` in Info.plist) to the Mac's LAN IP / ngrok / `localhost:3000`. A physical iPhone resolves `localhost` to its own loopback, so direct localhost only works in the iOS simulator.
 
+**XHS ingest (2026-11-26 model — browser).** The `xhs` CLI no longer works from the owner's US IP: xiaohongshu.com 302s to rednote.com, and rednote sessions are rejected by the CLI's xiaohongshu API. Scraping now drives a long-lived, logged-in Chrome over CDP (`backend/api/_lib/xhsBrowser.ts`, `backend/scripts/xhs-browser-ingest.ts`). Per city it searches a keyword list with the site's own **最多点赞 + 半年内** filters (most liked, last 6 months), keeps posts with ≥50 likes, reads the top N notes (raw JSON cached in `backend/data/xhs-raw/notes/`), and feeds `posts-<city>.json` to `scripts/test-pipeline.ts` via `POSTS_FILE` + `CITY`. The pipeline upsert now writes **every** source post with its own likes (up to 5 per restaurant), bumps `mention_count`/`total_likes` only by sources actually added (re-runs are idempotent), moves `post_created_at` forward to the newest post, and fills `features`, rating, Instagram, coordinates and `price_level` on insert (and on existing rows where they're empty). Runbook: `backend/CLAUDE.md § XHS browser ingest`.
+
+**Sources per restaurant (2026-11-26).** Up to **10** 小红书 posts per restaurant, ranked by popularity × freshness: `sourceScore = likes × recencyWeight(postCreatedAt)`, with weight 1.0 for posts ≤7 days old sliding linearly to 0.2 at 60+ days (same curve as deck ranking). The pipeline stores a new post when the restaurant has <10 or the post would rank in its top 10. `/api/restaurants/weekly` returns the top 10 XHS sources by score, then editorial sources (Eater / Resy). The iOS detail view shows them in server order (collapsed to 3, "See all N reviews").
+
 **XHS pipeline (2026-04-29 model).** Runs **locally** via `bash backend/scripts/run-pipeline.sh` (which calls `scripts/test-pipeline.ts` directly), then `npm run push-data` syncs SQLite → Neon. The HTTP route `api/restaurants/pipeline/run.ts` was archived to `backend/api-archive/restaurants-pipeline/run.ts` in D22 to free a slot under the Hobby 12-function cap (currently 11/12) — the cron + `maxDuration` blocks were stripped from `vercel.json` at the same time. To re-activate on Vercel: move the file back into `api/`, restore the `crons` (`0 10 * * 1`) + `functions.maxDuration: 300` blocks, **upgrade to Pro / Fluid Compute** so the 300s cap actually applies (Hobby ignores it and times out at 60s), and re-confirm function count ≤12. Two pieces still need to work in prod:
 
 1. **HTTP parser replaces the `xhs` CLI** when running on Vercel. `api/_lib/xhsScraper.ts::searchViaHttp` + `readNoteViaHttp` fetch `xiaohongshu.com` directly and parse the SSR `window.__INITIAL_STATE__` blob. `searchXhsPosts` and `readNote` env-branch on `VERCEL === '1'` — HTTP-first in prod, CLI-first locally, cross-fallback both ways.
@@ -729,10 +738,10 @@ The routes the iOS client calls today. The weekly XHS pipeline is **archived fro
 
 | # | Method | Route | Purpose |
 |---|---|---|---|
-| 1 | `GET` | `/api/restaurants/weekly?city=nyc` | Main discovery feed. Returns `ready` / `building` / `stale` envelope with the weekly restaurant deck. ETag-conditional: returns 304 on `If-None-Match` match. |
+| 1 | `GET` | `/api/restaurants/weekly?city=nyc\|bay` | Main discovery feed. Returns `ready` / `building` / `stale` envelope with the weekly restaurant deck: the restaurants touched by the city's latest completed pipeline run, falling back to all of the city's available rows when that run is empty. Rows, etag and fallback are filtered by `xhs_restaurants.city`. ETag-conditional: returns 304 on `If-None-Match` match. |
 | 2 | `POST` | `/api/restaurants/import-xhs` | Parses one XHS post link → multi-restaurant preview (Gemini extraction + Places enrichment). Returns array; iOS picks which to add. |
 | 3 | `PATCH` | `/api/restaurants/{id}/unavailable` | Flips `is_available_this_week = 0` after dislike / book / snooze. |
-| 4 | `GET` | `/api/locations` | City → borough → neighborhood mapping for the city banner. |
+| 4 | `GET` | `/api/locations?city=nyc\|bay` | City → borough (region) → neighborhood mapping for the filter chips. `bay` regions: San Francisco, East Bay, Peninsula, South Bay, North Bay (neighborhoods = SF neighborhoods / city names). |
 | 5 | `POST` | `/api/user/ensure` | Upserts the device's anonymous user row from the `X-User-Id` header. |
 | 6 | `GET` / `POST` | `/api/user/reservations` | List + create user reservations. |
 | 7 | `DELETE` | `/api/user/reservations/{id}` | Cancel / delete one reservation (scoped to the caller's `X-User-Id`). |

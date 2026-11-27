@@ -49,17 +49,58 @@ All handlers wrap with `withRequestLogging(handler)` from `_lib/logger.ts`. This
 ## Pipeline notes (XHS weekly job)
 
 - The `xhs` CLI is **not installed in the Vercel runtime**. The pipeline runs locally and writes to Neon (hybrid model). Don't try to bundle xhs.
+- **rednote split (2026-11-26):** from a US IP `www.xiaohongshu.com` 302-redirects to `www.rednote.com`, so a browser login yields `.rednote.com` cookies. The `xhs` CLI only reads `.xiaohongshu.com` cookies and calls `edith.xiaohongshu.com`, which kills a rednote session. Copying the cookies across does not work. Use the browser ingest below (or `xhs login --qrcode` as a stopgap).
 - HTTP fallback (`xhsScraper.ts → readNoteViaHttp / searchViaHttp`) parses `window.__INITIAL_STATE__` and requires session cookies (`XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID`) in env.
-- LLM extraction batches posts in groups of 10 with a delay — keep this if you change the loop.
+- LLM extraction runs `EXTRACT_CONCURRENCY` (default 5) workers with a per-note cache (`data/xhs-raw/extract/<city>-v1/`). The legacy `extractBatch` (sequential, 200 ms delay) is still exported for other callers.
 - Dedup uses `googlePlaceId` as the canonical key; falls back to normalized name when Places returns nothing.
 - `pipeline/run.ts` requires the `CRON_SECRET` header (same value as the cron). Don't remove that check.
 - `vercel.json` sets `maxDuration: 300` for `pipeline/run.ts` (Pro-tier capability) — full runs take longer than the Hobby 60s cap, so testing pipeline changes on Hobby means running locally.
+
+## XHS browser ingest (replaces the `xhs` CLI, 2026-11-26)
+
+The scraper is a real Chrome driven over CDP. The site signs its own requests, so there's no reverse-engineered signing, and it works with the xiaohongshu → rednote.com redirect.
+
+1. **Start the long-lived Chrome once and leave it open.** It uses a dedicated profile, not your everyday one:
+   ```bash
+   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9333 \
+     --remote-debugging-address=127.0.0.1 --user-data-dir="$HOME/.wheretoeat/xhs-browser-profile" --no-first-run
+   ```
+   Log in once in that window with the RedNote QR code. Scripts attach to it, open their own tab and detach without closing it (`XHS_CDP_URL`, default `http://127.0.0.1:9333`). Don't log in with a Playwright-launched browser: Playwright uses a mock keychain, so its cookies can't be read by normal Chrome.
+2. **Count:** `CITY=nyc npx ts-node -T scripts/xhs-browser-ingest.ts` searches each city keyword with the server-side filters **最多点赞 (most liked) + 半年内 (last 6 months)** and scrolls until likes drop below `MIN_LIKES` (50). It writes `data/xhs-raw/candidates-<city>.json`. Expect about 120 results per query before the platform stops returning more.
+3. **Read:** `CITY=nyc MODE=read MAX_POSTS=300 npx ts-node -T scripts/xhs-browser-ingest.ts` opens the top-N notes by likes and parses SSR `__INITIAL_STATE__`. Each note is cached at `data/xhs-raw/notes/<id>.json`, so re-runs and larger `MAX_POSTS` don't re-fetch. Output is `data/xhs-raw/posts-<city>.json`. About 6–7 s per note.
+4. **Pipeline:** `CITY=nyc POSTS_FILE=data/xhs-raw/posts-nyc.json npx ts-node scripts/test-pipeline.ts` runs DeepSeek extraction → Places → merge → upsert into local SQLite.
+
+Gotchas:
+- **Honeypots:** the search filter panel renders an invisible decoy twin before each real tag (`button-hp-installed`, `data-hp-kind`, `aria-hidden="true"`, opacity 1e-05). Never select by text alone. `xhsBrowser.clickFilterTag` excludes the decoys.
+- The filter panel opens on **hover** of `div.filter`. After hovering, move the mouse back over the feed before scrolling, or the wheel scrolls the panel.
+- On a captcha or verify page the script pauses (up to 10 min) for a human to solve it in the window. Five failed reads in a row abort the read phase.
+- Code lives in `api/_lib/xhsBrowser.ts` (local only; never import it from a deployed route) and `scripts/xhs-browser-ingest.ts`. `scripts/xhs-browser-probe.ts` is the original feasibility probe.
+
+## Syncing a pipeline run to Neon (2026-11-26)
+
+Use `SINCE=<date> [DRY_RUN=1] npx ts-node -T scripts/sync-runs-to-neon.ts` (or `RUN_IDS=…`), **not** `npm run push-data`. push-data also copies local users / reservations / favorites into prod, can't update existing rows, and its INSERT drops features / rating / IG / coords / price / source_type. The sync script upserts the runs, then their restaurants and sources. Existing prod rows keep `is_available_this_week`, booking links and Blob photo URLs; the pipeline's own fields (counts, recency, run ID, rating) come from local.
+
+**After every sync, run `npm run mirror-photos`** (targets Neon). The pipeline stores raw `places.googleapis.com/.../media?key=…` photo URLs, and the sync keeps prod's existing `photo_url`, so new rows reach prod with Places URLs. Those cost a billed Places call plus a 302 on every app load, expose the API key in `/weekly`, and turn into permanent gray cards once Google expires the photo name (400). The script uploads each photo to Blob (`photos/<place_id>_<i>.jpg`), re-reads expired photo names from Place Details, and drops photos it can't recover. It's idempotent, and `DRY_RUN=1` / `CITY` / `LIMIT` / `TARGET=sqlite` are available.
+
+`weekly.ts` picks the latest run with `ORDER BY completed_at DESC NULLS LAST`. Postgres sorts NULL first under DESC, and Neon has a legacy `completed` run with NULL `completed_at` that otherwise shadows every real run. SQLite sorts NULL last, so this only shows up in prod.
+
+**Deploying while another session edits the tree:** deploy from a snapshot copy, and **diff the snapshot against `git HEAD`** before `vercel --prod`. A SHA match against the live working file proves nothing: on 2026-11-26 that let another session's half-finished `weekly.ts` ship and 500 prod for ~3 min. After any deploy, curl `/api/restaurants/weekly?city=nyc` and `?city=bay` and check for 200 and non-zero counts.
+
+## Sources per restaurant (2026-11-26)
+
+`restaurantMerger.ts` exports `MAX_XHS_SOURCES_PER_RESTAURANT` (10) and `sourceScore` (likes × recency weight). `test-pipeline.ts` admits a new XHS source only if the restaurant has <10 or the post ranks in its top 10 (override with `MAX_SOURCES_PER_RESTAURANT`). It never deletes. `weekly.ts → attachSources` sorts by score and trims XHS to 10. Editorial sources are appended, untrimmed.
+
+## Cities (`nyc`, `bay`)
+
+`xhs_restaurants.city` is the city key. `borough` holds the city's region: NYC boroughs, or for `bay` one of San Francisco / East Bay / Peninsula / South Bay / North Bay, assigned from Places `locality` via `cityRegions.regionForLocality`. `cityRegions.ts → CITY_META` holds the per-city Places query suffixes and, for `bay`, a bounds rectangle used for `locationBias` and to drop out-of-area matches (`places.rejected_out_of_area`). NYC has no bounds and keeps its original query strings. `extractRestaurantData` / `extractBatch` / `enrichWithPlaces` take an optional `city` (default `nyc`), and `test-pipeline.ts` reads `CITY`. `weekly.ts` filters the deck and etag by `city`. Plan and status: `agent_docs/bay-area-expansion.md`.
 
 ## LLM parser (DeepSeek-V4-Pro)
 
 The XHS post → restaurant extractor and the per-mention classifier both run on **DeepSeek-V4-Pro** via the OpenAI-compatible SDK pointed at `https://api.deepseek.com`. Same pattern as `feedback-agent/src/llm.ts` — secret is `DEEP_SEEK_API` from `~/.config/wte-feedback-agent/secrets.env` (or env var). Model id override: `DEEPSEEK_MODEL` env var.
 
 **Hard rule**: every DeepSeek call passes `thinking: { type: 'disabled' }`. V4 defaults to thinking-on which silently eats `max_tokens` — chokepoint is `_lib/deepseek.ts`. Don't bypass.
+
+**Provider switch (2026-11-26):** set `LLM_PROVIDER=fireworks` to send the same prompts to Fireworks. The default model is `accounts/fireworks/models/deepseek-v4p1-flash`; override with `FIREWORKS_MODEL`. The key comes from the `FIREWORKS_API_KEY` env var or secrets.env, or from a file path in `FIREWORKS_API_KEY_FILE`. Fireworks honours the same `thinking` field. Benchmark (`scripts/bench-llm.ts`, 20 posts): Flash ran at 0.9 s/call (ultrafast router 0.4 s) vs about 2 s for V4-Pro, but **found only 54–64% of the restaurants Pro finds** and returned nothing for 10–13 of 20 posts vs Pro's 8. **Extraction stays on DeepSeek V4-Pro.** Pro is slow under heavy concurrency (about 50–60 s per call at 15 parallel on long posts), so `test-pipeline.ts` runs extraction with `EXTRACT_CONCURRENCY` (default 5) and caches per note in `data/xhs-raw/extract/<city>-v1/`. Bump the suffix whenever the prompt changes.
 
 ### Negative-post filter (drop on any complaint)
 
@@ -121,8 +162,9 @@ Pull live values into `.env.local` with `vercel env pull .env.local --yes`.
 npm run migrate              # SQLite local schema
 npm run migrate:cloud        # Neon prod schema
 npm run push-data            # one-shot SQLite → Neon dump (sqlite-to-neon.ts)
-npm run push-photos          # mirror Places photos to Vercel Blob
-npm run migrate-places-photos # update photo URLs to Blob URLs
+npm run push-photos          # legacy: upload localhost-served photos to Blob
+npm run migrate-places-photos # legacy: superseded by mirror-photos (can't recover expired photos)
+npm run mirror-photos        # Places photo URLs → Blob on Neon, refreshing expired ones; run after every sync
 npm run backfill-coords      # backfill lat/lng on existing rows
 npm run reset-deck           # local-only: wipe weekly deck + restart pipeline
 ```
