@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Combine
 import CoreLocation
 
@@ -86,7 +87,22 @@ final class LocationService: ObservableObject {
         } else if currentStatus == .notDetermined {
             requestPermission()
         }
+
+        // Fresh fix every time the app comes to the foreground, so the
+        // GPS-driven city ("This week's picks", Pick, Find) reflects where the
+        // user is now. Significant-change updates alone can lag for minutes.
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            let status = self.manager.authorizationStatus
+            if status == .authorizedAlways || status == .authorizedWhenInUse {
+                self.requestOneTimeLocation()
+            }
+        }
     }
+
+    private var foregroundObserver: NSObjectProtocol?
 
     func requestPermission() {
         manager.requestWhenInUseAuthorization()

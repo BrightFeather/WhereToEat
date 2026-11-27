@@ -778,7 +778,7 @@ struct DiscoveryContainerView: View {
         let label = WeeklyRestaurantService.cities.first { $0.key == weekly.activeCity }?.label ?? "New York"
         return Button { showCityPicker = true } label: {
             HStack(spacing: 5) {
-                Image(systemName: "mappin.circle.fill")
+                Image(systemName: weekly.isAutoCity ? "location.circle.fill" : "mappin.circle.fill")
                     .font(.system(size: 15, weight: .semibold))
                 Text(label)
                     .font(.subheadline.weight(.semibold))
@@ -792,10 +792,19 @@ struct DiscoveryContainerView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("City: \(label). Double-tap to change.")
         .popover(isPresented: $showCityPicker, arrowEdge: .top) {
-            CityPickerCard(selected: weekly.activeCity) { key in
-                weekly.selectCity(key)
-                showCityPicker = false
-            }
+            CityPickerCard(
+                selected: weekly.activeCity,
+                isAuto: weekly.isAutoCity,
+                gpsCityLabel: weekly.gpsCity.flatMap { key in WeeklyRestaurantService.cities.first { $0.key == key }?.label },
+                onUseLocation: {
+                    weekly.useCurrentLocation()
+                    showCityPicker = false
+                },
+                onSelect: { key in
+                    weekly.selectCity(key)
+                    showCityPicker = false
+                }
+            )
             .presentationCompactAdaptation(.popover)
         }
     }
@@ -808,6 +817,11 @@ struct DiscoveryContainerView: View {
 /// the current city.
 private struct CityPickerCard: View {
     let selected: String
+    /// Following GPS ("Current location") rather than an explicit pick.
+    let isAuto: Bool
+    /// City the GPS fix falls in, if any supported one.
+    let gpsCityLabel: String?
+    let onUseLocation: () -> Void
     let onSelect: (String) -> Void
 
     private struct CityStyle {
@@ -823,6 +837,8 @@ private struct CityPickerCard: View {
 
     var body: some View {
         VStack(spacing: 2) {
+            locationRow
+            Divider().padding(.horizontal, 8).padding(.vertical, 2)
             ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
                 row(key: city.key, label: city.label)
             }
@@ -831,9 +847,45 @@ private struct CityPickerCard: View {
         .frame(width: 220)
     }
 
+    /// "Current location": follow GPS. Subtitle names the detected city, or
+    /// says we fall back to New York when the fix isn't in a supported city.
+    private var locationRow: some View {
+        let tint = Color.accentColor
+        return Button(action: onUseLocation) {
+            HStack(spacing: 10) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(tint)
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(0.12)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Current location")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.primary)
+                    Text(gpsCityLabel.map { "Near \($0)" } ?? "Not near a city yet · New York")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                if isAuto {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(tint)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(isAuto ? tint.opacity(0.08) : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Current location" + (isAuto ? ", selected" : ""))
+    }
+
     private func row(key: String, label: String) -> some View {
         let style = Self.styles[key] ?? CityStyle(emoji: "📍", subtitle: "", tint: .gray)
-        let isSelected = key == selected
+        let isSelected = !isAuto && key == selected
         return Button { onSelect(key) } label: {
             HStack(spacing: 10) {
                 Text(style.emoji)

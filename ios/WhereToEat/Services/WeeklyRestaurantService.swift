@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+import CoreLocation
 
 enum WeeklyStatus {
     case ready([WeeklyRestaurant])
@@ -18,25 +20,78 @@ final class WeeklyRestaurantService: ObservableObject {
     /// band size), so warming these makes the first card's photo instant.
     private static let prefetchCount = 25
     /// Cities the deck can show: backend key → label for the Pick-page picker.
+    /// Only cities with live data belong here (new cities are added once their
+    /// first ingest is synced; see agent_docs/multi-city-expansion.md).
     static let cities: [(key: String, label: String)] = [("nyc", "New York"), ("bay", "Bay Area")]
+    /// Bounding box per city (matches backend `CITY_META` bounds). Used to turn
+    /// a GPS fix into a city key and by Find to ignore mis-geocoded pins.
+    static let cityBounds: [String: (minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)] = [
+        "nyc": (40.45, 41.0, -74.3, -73.65),
+        "bay": (36.95, 38.65, -123.15, -121.45),
+    ]
     private static let selectedCityKey = "selected_city"
+    private static let defaultCity = "nyc"
 
-    /// Backend city key the deck is showing (`nyc` | `bay`). Chosen explicitly
-    /// with the Pick-page city picker, persisted, defaults to `nyc`. GPS does
-    /// not switch it.
+    /// City key whose box contains `coord`, or nil when outside every city.
+    static func cityKey(for coord: CLLocationCoordinate2D?) -> String? {
+        guard let c = coord else { return nil }
+        return cities.first { city in
+            guard let b = cityBounds[city.key] else { return false }
+            return c.latitude >= b.minLat && c.latitude <= b.maxLat
+                && c.longitude >= b.minLng && c.longitude <= b.maxLng
+        }?.key
+    }
+
+    /// True while the deck follows GPS ("Current location" on the Pick-page
+    /// picker). False once the user picks a city explicitly.
+    @Published private(set) var isAutoCity: Bool =
+        UserDefaults.standard.string(forKey: WeeklyRestaurantService.selectedCityKey) == nil
+    /// City detected from the latest GPS fix (nil = no fix, or not in a supported city).
+    @Published private(set) var gpsCity: String? = WeeklyRestaurantService.cityKey(for: LocationService.shared.currentLocation)
+
+    /// Backend city key the deck (Home's "This week's picks", Pick, Find) shows:
+    /// the city picked on the Pick page, else the GPS city, else New York.
     @Published private(set) var activeCity: String =
-        UserDefaults.standard.string(forKey: WeeklyRestaurantService.selectedCityKey) ?? "nyc"
+        UserDefaults.standard.string(forKey: WeeklyRestaurantService.selectedCityKey)
+        ?? WeeklyRestaurantService.cityKey(for: LocationService.shared.currentLocation)
+        ?? WeeklyRestaurantService.defaultCity
 
     private let api = APIClient.shared
     private let cache = WeeklyCache.shared
     private var pollTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
-    private init() {}
+    private init() {
+        // `$currentLocation` emits before the property is set: use the value.
+        LocationService.shared.$currentLocation
+            .map { WeeklyRestaurantService.cityKey(for: $0) }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] detected in
+                guard let self else { return }
+                self.gpsCity = detected
+                if self.isAutoCity { self.switchTo(detected ?? Self.defaultCity) }
+            }
+            .store(in: &cancellables)
+    }
 
-    /// Pick-page city picker entry point.
+    /// Pick-page picker: show `key` regardless of GPS (persisted).
     func selectCity(_ key: String) {
-        guard Self.cities.contains(where: { $0.key == key }), key != activeCity else { return }
+        guard Self.cities.contains(where: { $0.key == key }) else { return }
         UserDefaults.standard.set(key, forKey: Self.selectedCityKey)
+        isAutoCity = false
+        switchTo(key)
+    }
+
+    /// Pick-page picker "Current location": follow GPS again.
+    func useCurrentLocation() {
+        UserDefaults.standard.removeObject(forKey: Self.selectedCityKey)
+        isAutoCity = true
+        switchTo(gpsCity ?? Self.defaultCity)
+    }
+
+    private func switchTo(_ key: String) {
+        guard key != activeCity else { return }
         activeCity = key
         pollTask?.cancel()  // polling for the previous city must not overwrite the new deck
         status = .building

@@ -54,18 +54,11 @@ struct FindView: View {
         key == "bay" ? bayRegion : nycRegion
     }
 
-    /// Plausibility box per city (matches backend CITY_META bounds for `bay`).
-    /// Coordinates outside it, e.g. a mis-geocoded row, are ignored when fitting.
-    private static let cityBounds: [String: (minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)] = [
-        "nyc": (40.45, 41.0, -74.3, -73.65),
-        "bay": (36.95, 38.65, -123.15, -121.45),
-    ]
-
     /// Region framing every restaurant of `key` inside its plausibility box,
     /// with a 15% margin. Nil when fewer than two qualify (caller keeps the
     /// fixed city region).
     private func fittedRegion(for key: String) -> MKCoordinateRegion? {
-        guard let b = Self.cityBounds[key] else { return nil }
+        guard let b = WeeklyRestaurantService.cityBounds[key] else { return nil }
         let coords = viewModel.allRestaurants.compactMap { r -> (Double, Double)? in
             guard let lat = r.latitude, let lng = r.longitude,
                   lat >= b.minLat, lat <= b.maxLat, lng >= b.minLng, lng <= b.maxLng else { return nil }
