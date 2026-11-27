@@ -661,6 +661,7 @@ struct DiscoveryWrapper: View {
 struct DiscoveryContainerView: View {
     @ObservedObject var viewModel: DiscoveryViewModel
     @EnvironmentObject private var customListVM: CustomListViewModel
+    @ObservedObject private var weekly = WeeklyRestaurantService.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -756,12 +757,42 @@ struct DiscoveryContainerView: View {
         // so the title reads as a proper page header without a `.large`
         // mode that would push the rest of the content down.
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { cityPicker }
+        }
         .sheet(item: $viewModel.likedRestaurant) { restaurant in
             NavigationStack {
                 RestaurantDetailView(restaurant: restaurant)
                     .environmentObject(customListVM)
             }
         }
+    }
+
+    /// Top-left city switcher (NYC / Bay Area). Half-transparent at rest so it
+    /// doesn't compete with the "This week" title; the whole app (Home, Pick,
+    /// Find) follows the choice. Defaults to NYC.
+    private var cityPicker: some View {
+        let label = WeeklyRestaurantService.cities.first { $0.key == weekly.activeCity }?.label ?? "New York"
+        return Menu {
+            Picker("City", selection: Binding(
+                get: { weekly.activeCity },
+                set: { weekly.selectCity($0) }
+            )) {
+                ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
+                    Text(city.label).tag(city.key)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "mappin.and.ellipse")
+                Text(label).fontWeight(.semibold)
+                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
+            }
+            .font(.subheadline)
+            .foregroundColor(.primary)
+            .opacity(0.5)
+        }
+        .accessibilityLabel("City: \(label)")
     }
 }
 

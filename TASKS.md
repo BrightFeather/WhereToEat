@@ -89,6 +89,15 @@ Audit of `xhsScraper.ts` → `llmExtractor.ts` → `placesEnricher.ts` → `rest
 | NYC-INGEST-2 | Note: the NYC deck is all available rows, not just this run | ℹ️ Superseded by LAT-3 (2026-11-26). Briefly, after the `NULLS LAST` deploy, `weekly.ts` served only this run's 162 rows. It now serves every available NYC row (684), and the latest run decides only ready vs stale. |
 | NYC-INGEST-3 | Sync to Neon + deploy | ✅ 2026-11-26 (see BA-P1-4). **Incident:** prod `/api/restaurants/weekly` returned 500 for ~3 min (about 20:54–20:57 local). The first deploy snapshot picked up another session's half-finished `weekly.ts` rewrite (`ReferenceError: latestCompleted`). Fixed by redeploying HEAD's `weekly.ts` plus only this session's hunks. That session's rewrite is still undeployed in the working tree. |
 
+### City picker + Bay Area in the app — 2026-11-26
+
+| # | Task | Status |
+|---|------|--------|
+| CITY-1 | Bay Area picks didn't show in the app | ✅ Root cause, reproduced in the simulator with SF GPS: the app started on `nyc` and sent a background NYC refresh; the GPS fix switched to `bay`; then the **late NYC response overwrote the Bay deck and cache**. `WeeklyRestaurantService` now drops responses for a city that's no longer active (fetch, refresh, polling), cancels polling on switch, and sends the cached etag only for the same city. |
+| CITY-2 | City picker at the top left of the Pick page (owner request) | ✅ `DiscoveryContainerView.cityPicker`: a `Menu` of New York / Bay Area, 50% opacity, default New York, persisted (`selected_city`). It's now the **single source** of the deck city; GPS no longer switches cities (the `LocationService.cityKey` helpers were removed). Home, Pick and Find all follow; chips reset on switch; Find recenters on the city. Verified in the simulator: NYC → Bay Area (deck, Home picks, 133 picks, region chips, Find map with 128 pins) → relaunch (persisted) → NYC. In TestFlight build 33. |
+| CITY-3 | Bay Area region chips showed only "Other" | ✅ The iOS `knownBoroughs` whitelist (Discovery + Home) was NYC-only; added San Francisco / East Bay / Peninsula / South Bay / North Bay. |
+| CITY-4 | BAY-BOOK-1 iOS fallback | ✅ "Only show bookable" is skipped when the current city has zero bookable restaurants (`WeeklyRestaurantService.activeCityHasBookable`), so Bay Area isn't empty before its booking backfill. The other session is doing the data backfill (`backfill-booking-links.ts`). Once some Bay rows have links, the normal filter applies again automatically. |
+
 ### Sources per restaurant: 10, ranked by popularity × freshness — 2026-11-26
 
 | # | Task | Status |

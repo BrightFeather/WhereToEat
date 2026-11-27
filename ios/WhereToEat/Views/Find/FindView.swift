@@ -18,7 +18,9 @@ struct FindView: View {
     @StateObject private var viewModel = FindViewModel()
     @EnvironmentObject private var customListVM: CustomListViewModel
     @EnvironmentObject private var locationService: LocationService
-    @State private var cameraPosition: MapCameraPosition = .region(Self.nycRegion)
+    /// The deck city chosen on the Pick page; the map follows it.
+    @ObservedObject private var weekly = WeeklyRestaurantService.shared
+    @State private var cameraPosition: MapCameraPosition = .region(Self.cityRegion(WeeklyRestaurantService.shared.activeCity))
     @State private var presentedRestaurant: WeeklyRestaurant? = nil
     @State private var panelFraction: CGFloat = 0.45
     /// Set on first appear so we don't keep snapping back to the user's
@@ -38,6 +40,21 @@ struct FindView: View {
         center: CLLocationCoordinate2D(latitude: 40.7308, longitude: -73.9973),
         span: MKCoordinateSpan(latitudeDelta: 0.10, longitudeDelta: 0.08)
     )
+
+    /// SF + Peninsula + South Bay + East Bay (most Bay picks), not North Bay.
+    private static let bayRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 37.58, longitude: -122.20),
+        span: MKCoordinateSpan(latitudeDelta: 0.75, longitudeDelta: 0.65)
+    )
+
+    private static func cityRegion(_ key: String) -> MKCoordinateRegion {
+        key == "bay" ? bayRegion : nycRegion
+    }
+
+    private static func region(_ r: MKCoordinateRegion, contains c: CLLocationCoordinate2D) -> Bool {
+        abs(c.latitude - r.center.latitude) <= r.span.latitudeDelta / 2
+            && abs(c.longitude - r.center.longitude) <= r.span.longitudeDelta / 2
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -86,6 +103,12 @@ struct FindView: View {
         .onChange(of: locationService.currentLocation != nil) { _, hasFix in
             if hasFix { applyInitialCenterIfNeeded() }
         }
+        // Pick-page city switch → show the new city on the map.
+        .onChange(of: weekly.activeCity) { _, key in
+            let region = Self.cityRegion(key)
+            withAnimation(.easeInOut(duration: 0.35)) { cameraPosition = .region(region) }
+            viewModel.visibleRegion = region
+        }
     }
 
     /// Center on the user's current location with a tight "nearby" span the
@@ -95,11 +118,15 @@ struct FindView: View {
     /// `mappable` returns every coord-bearing row and the user sees the same
     /// dot-storm we're trying to avoid).
     private func applyInitialCenterIfNeeded() {
+        let cityRegion = Self.cityRegion(weekly.activeCity)
         if viewModel.visibleRegion == nil {
-            viewModel.visibleRegion = Self.nycRegion
+            viewModel.visibleRegion = cityRegion
         }
         guard !didApplyInitialCenter else { return }
-        guard let userCoord = locationService.currentLocation else { return }
+        // Only zoom to the user when they're inside the selected city;
+        // otherwise (e.g. in NYC browsing Bay Area) stay on the city view.
+        guard let userCoord = locationService.currentLocation,
+              Self.region(cityRegion, contains: userCoord) else { return }
         let region = MKCoordinateRegion(center: userCoord, span: Self.initialNearbySpan)
         cameraPosition = .region(region)
         viewModel.visibleRegion = region

@@ -27,6 +27,11 @@ final class HomeViewModel: ObservableObject {
     /// Mirrors UserProfile.showOnlyReservable. Kept as state so toggles in
     /// Settings push through to the Home feed without a view re-mount.
     @Published var showOnlyReservable: Bool = UserProfile.load().showOnlyReservable
+    /// The "only bookable" setting, skipped when the current city has no
+    /// bookable restaurants at all (otherwise Home would show no picks).
+    private var reservableFilterActive: Bool {
+        showOnlyReservable && weeklyService.activeCityHasBookable
+    }
 
     /// Mirrors UserProfile.discoverySources. A restaurant qualifies for the
     /// home feed iff it has ≥1 source row whose `source_type` is in this set.
@@ -100,14 +105,16 @@ final class HomeViewModel: ObservableObject {
                 self.objectWillChange.send()
             }
             .store(in: &cancellables)
-        // City switch (Settings override / new GPS fix): reload the region
-        // list for the filter chips. The deck itself is re-bootstrapped by
-        // WeeklyRestaurantService.switchCity.
+        // City switch (Pick-page picker): clear the old city's chip picks and
+        // reload the region list. The deck itself is re-bootstrapped by
+        // WeeklyRestaurantService.selectCity.
         weeklyService.$activeCity
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] key in
                 guard let self else { return }
+                self.selectedBorough = nil
+                self.selectedCuisine = nil
                 Task { await self.regionsService.load(city: key) }
             }
             .store(in: &cancellables)
@@ -216,7 +223,7 @@ final class HomeViewModel: ObservableObject {
         let seen = SeenService.shared.seenToday()
         let today = Date()
         let pool = allRestaurants.filter { r in
-            if showOnlyReservable, !Self.isReservable(r) { return false }
+            if reservableFilterActive, !Self.isReservable(r) { return false }
             if !Self.matchesEnabledSources(r, enabled: enabledSources) { return false }
             guard let uuid = UUID(uuidString: r.id) else { return false }
             if remoteReservedIds.contains(uuid) { return false }
@@ -254,7 +261,7 @@ final class HomeViewModel: ObservableObject {
             if let cachedId = Self.cachedTopPickId(dateKey: dailyKey, userId: userId),
                let candidate = allRestaurants.first(where: { $0.id == cachedId }),
                Self.isStickyTopPickValid(candidate,
-                                         showOnlyReservable: showOnlyReservable,
+                                         showOnlyReservable: reservableFilterActive,
                                          enabledSources: enabledSources,
                                          remoteReservedIds: remoteReservedIds,
                                          remoteBlockedIds: remoteBlockedIds) {
@@ -445,7 +452,7 @@ final class HomeViewModel: ObservableObject {
 
     private func rebuildFilterOptions() {
         let pool = allRestaurants.filter { r in
-            if showOnlyReservable, !Self.isReservable(r) { return false }
+            if reservableFilterActive, !Self.isReservable(r) { return false }
             return Self.matchesEnabledSources(r, enabled: enabledSources)
         }
 
@@ -493,7 +500,7 @@ final class HomeViewModel: ObservableObject {
         // Counts of neighborhoods actually represented in the data for this borough.
         var counts: [String: Int] = [:]
         for r in allRestaurants where normalizedBorough(r.borough) == borough {
-            if showOnlyReservable, !Self.isReservable(r) { continue }
+            if reservableFilterActive, !Self.isReservable(r) { continue }
             guard let hood = normalizedNeighborhood(r.neighborhood) else { continue }
             counts[hood, default: 0] += 1
         }
@@ -529,7 +536,7 @@ final class HomeViewModel: ObservableObject {
         let seen = SeenService.shared.seenToday()
 
         let filtered = allRestaurants.filter { r in
-            if showOnlyReservable, !Self.isReservable(r) { return false }
+            if reservableFilterActive, !Self.isReservable(r) { return false }
             if !Self.matchesEnabledSources(r, enabled: enabledSources) { return false }
             if let cuisine = selectedCuisine,
                normalizedCuisine(r.cuisineType) != cuisine { return false }
@@ -611,7 +618,9 @@ final class HomeViewModel: ObservableObject {
     /// column from a custom list import or bad data) maps to "Other".
     private static let knownBoroughs: Set<String> = [
         "Manhattan", "Brooklyn", "Queens", "Bronx", "The Bronx",
-        "Staten Island", "New Jersey", "Hong Kong", "China", "Outside NYC"
+        "Staten Island", "New Jersey", "Hong Kong", "China", "Outside NYC",
+        // Bay Area regions (city `bay`; backend cityRegions.ts)
+        "San Francisco", "East Bay", "Peninsula", "South Bay", "North Bay"
     ]
 
     func normalizedBorough(_ raw: String?) -> String {

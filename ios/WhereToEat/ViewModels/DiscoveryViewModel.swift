@@ -28,6 +28,11 @@ final class DiscoveryViewModel: ObservableObject {
     /// Mirrors UserProfile.showOnlyReservable. When true we drop any card that
     /// doesn't have a Resy/OpenTable booking link.
     @Published var showOnlyReservable: Bool = UserProfile.load().showOnlyReservable
+    /// The "only bookable" setting, skipped when the current city has no
+    /// bookable restaurants at all (otherwise the deck would be empty).
+    private var reservableFilterActive: Bool {
+        showOnlyReservable && weeklyService.activeCityHasBookable
+    }
 
     /// Mirrors UserProfile.discoverySources — the set of `source_type` values
     /// the user has opted into. Same semantics as Home: a card is in the deck
@@ -69,12 +74,16 @@ final class DiscoveryViewModel: ObservableObject {
                 self.applyFilter()
             }
             .store(in: &cancellables)
-        // City switch → reload the deck for the new city.
+        // City switch (Pick-page picker) → clear the previous city's
+        // borough / neighborhood / cuisine picks and reload the deck.
         weeklyService.$activeCity
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self else { return }
+                self.selectedBorough = nil
+                self.selectedNeighborhoods.removeAll()
+                self.selectedCuisine = nil
                 Task { await self.loadCards() }
             }
             .store(in: &cancellables)
@@ -234,7 +243,7 @@ final class DiscoveryViewModel: ObservableObject {
     private func buildBoroughs() {
         var counts: [String: Int] = [:]
         for card in allCards {
-            if showOnlyReservable, card.reservationSource == nil { continue }
+            if reservableFilterActive, card.reservationSource == nil { continue }
             let b = normalizedBorough(card.borough)
             counts[b, default: 0] += 1
         }
@@ -261,7 +270,7 @@ final class DiscoveryViewModel: ObservableObject {
         }
         var counts: [String: Int] = [:]
         for card in allCards where normalizedBorough(card.borough) == borough {
-            if showOnlyReservable, card.reservationSource == nil { continue }
+            if reservableFilterActive, card.reservationSource == nil { continue }
             guard let hood = card.neighborhood?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !hood.isEmpty else { continue }
             counts[hood, default: 0] += 1
@@ -276,7 +285,9 @@ final class DiscoveryViewModel: ObservableObject {
     /// column from a custom list import or bad data) maps to "Other".
     private static let knownBoroughs: Set<String> = [
         "Manhattan", "Brooklyn", "Queens", "Bronx", "The Bronx",
-        "Staten Island", "New Jersey", "Hong Kong", "China", "Outside NYC"
+        "Staten Island", "New Jersey", "Hong Kong", "China", "Outside NYC",
+        // Bay Area regions (city `bay`; backend cityRegions.ts)
+        "San Francisco", "East Bay", "Peninsula", "South Bay", "North Bay"
     ]
 
     func normalizedBorough(_ raw: String?) -> String {
@@ -288,7 +299,7 @@ final class DiscoveryViewModel: ObservableObject {
     private func buildCuisines() {
         var counts: [String: Int] = [:]
         for card in allCards {
-            if showOnlyReservable, card.reservationSource == nil { continue }
+            if reservableFilterActive, card.reservationSource == nil { continue }
             guard let c = normalizedCuisine(card.rawCuisineType) else { continue }
             counts[c, default: 0] += 1
         }
@@ -315,7 +326,7 @@ final class DiscoveryViewModel: ObservableObject {
 
     private func applyFilter() {
         cards = allCards.filter { card in
-            if showOnlyReservable, card.reservationSource == nil { return false }
+            if reservableFilterActive, card.reservationSource == nil { return false }
             if !Self.matchesEnabledSources(card, enabled: enabledSources) { return false }
             if let borough = selectedBorough, normalizedBorough(card.borough) != borough { return false }
             if !selectedNeighborhoods.isEmpty {

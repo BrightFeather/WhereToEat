@@ -54,7 +54,7 @@ Defaults for the fields an onboarding flow would have collected come from `UserP
 - **Override:** user pins a specific city in Settings → persists until cleared
 - **Eater city:** auto-resolved from current location or city override (no separate config)
 - Active override shown as banner in-app: *"Showing restaurants in New York, NY"*
-- **City key (2026-11-26).** The weekly deck is per city: `nyc` or `bay` (SF Bay Area). iOS resolves it in `LocationService.cityKey(override:current:)`: the Settings override coordinate first, then GPS. Inside the Bay Area box (lat 36.95–38.65, lng −123.15…−121.45) the key is `bay`; anything else, or no location, is `nyc`. `WeeklyRestaurantService.activeCity` follows changes (new GPS fix, override set or cleared), resets to `building`, and re-bootstraps. Home reloads the region chips (`/api/locations?city=`) and Discovery rebuilds its deck. Bay Area regions fill the "borough" slot: San Francisco · East Bay · Peninsula · South Bay · North Bay. See `agent_docs/bay-area-expansion.md`.
+- **City picker (2026-11-26).** The weekly deck is per city: `nyc` (New York) or `bay` (SF Bay Area). The city is chosen explicitly with the **picker at the top left of the Pick page** (📍 "New York ⌄", shown at 50% opacity at rest). It's a `Menu` of the cities with a checkmark on the current one, persisted in UserDefaults (`selected_city`) and defaulting to **New York**. GPS and the Settings location override do **not** change the deck city. On a switch, `WeeklyRestaurantService.selectCity` resets to `building` and re-bootstraps. Home, Pick and Find all follow: Home and Pick clear their borough / neighborhood / cuisine chips, Home reloads the region list (`/api/locations?city=`), Pick rebuilds its deck, and the Find map jumps to the city (it only zooms to the user's GPS position when that's inside the selected city). Bay Area regions fill the "borough" slot: San Francisco · East Bay · Peninsula · South Bay · North Bay. In-flight weekly requests for the previous city are discarded when they land, so a late response can't overwrite the new city's deck. The "Only show bookable restaurants" setting is skipped for a city with **no** Resy / OpenTable links at all (Bay Area before its booking backfill), so the deck isn't empty. See `agent_docs/bay-area-expansion.md`.
 
 ---
 
@@ -113,8 +113,8 @@ The app's bottom navigation has four root tabs, in this order:
 | # | Tab | Icon | Root view | Purpose |
 |---|---|---|---|---|
 | 0 | **Home** | `house.fill` | `mainTab` (greeting + bookings + picks) | Overview surface — greeting, upcoming reservations, three curated picks, gradient CTA into Pick |
-| 1 | **Pick** | `flame.fill` | `DiscoveryContainerView(viewModel: pickVM)` | The Tinder-style swipe deck (formerly reachable only via Home's CTA push). |
-| 2 | **Find** | `map.fill` | `FindView` | Map of NYC restaurants + bottom-sheet list with cuisine filter chips. |
+| 1 | **Pick** | `flame.fill` | `DiscoveryContainerView(viewModel: pickVM)` | The Tinder-style swipe deck (formerly reachable only via Home's CTA push). Top-left toolbar: the city picker (New York / Bay Area, 50% opacity), which drives the whole app's deck city. |
+| 2 | **Find** | `map.fill` | `FindView` | Map of the selected city's restaurants + bottom-sheet list with cuisine filter chips. |
 | 3 | **My List** | `heart.text.square` | `CustomListView` | User's saved restaurants. |
 
 `HomeView` owns the `TabView` and lifts `pickVM: DiscoveryViewModel` + `customListVM: CustomListViewModel` as `@StateObject`s so Pick / Find / My List share the same custom-list cache and Pick keeps its deck position across tab switches. Tab-switch buses: `.switchToMyList`, `.switchToPick`, `.switchToFind` — Home's gradient CTA + stats pills now post `.switchToPick` instead of pushing a NavigationStack destination.

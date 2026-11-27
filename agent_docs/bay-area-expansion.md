@@ -38,7 +38,7 @@ Started 2026-11-26. Goal: harvest good SF Bay Area restaurant recommendations fr
 |---|---|---|
 | BA-P1-1 | `weekly.ts`: filter by `city` in SQL and make the etag per city | ✅ verified locally: `city=bay` → ready, 133 rows; `city=nyc` → ready, 162 rows |
 | BA-P1-2 | `/api/locations?city=bay` returns the regions | ✅ verified locally |
-| BA-P1-3 | iOS: resolve city key from location / Settings override instead of the hardcoded `"nyc"` in Home / Find / Discovery / CityRegions; ship to TestFlight | ✅ code + build green (`LocationService.cityKey`, `WeeklyRestaurantService.activeCity`). Shipped in TestFlight build 29 (2026-11-26). Prod serves `bay` since BA-P1-4. |
+| BA-P1-3 | iOS: choose the city in the app | ✅ First shipped as GPS-based switching (build 29). Replaced 2026-11-26 by an explicit **city picker** at the top left of the Pick page (New York / Bay Area, default New York, persisted), plus a fix for a race where a late NYC response overwrote the Bay deck. See TASKS § City picker (CITY-1..4). |
 | BA-P1-4 | Sync `bay` + new NYC rows to Neon and `vercel --prod` for the `weekly.ts` city filter | ✅ 2026-11-26 via the new `scripts/sync-runs-to-neon.ts` (not push-data). Prod: `city=bay` → ready, 133 rows. |
 
 ### P2 — polish
@@ -59,6 +59,7 @@ Started 2026-11-26. Goal: harvest good SF Bay Area restaurant recommendations fr
 
 ## Log
 
+- 2026-11-26 — Bay Area wasn't showing in the app: a stale-response race, the NYC-only borough whitelist, and the "only bookable" filter (0 Bay rows bookable). All fixed in iOS, and the city is now picked explicitly on the Pick page.
 - 2026-11-26 — P1-4 done: synced to Neon and deployed; prod serves both cities. P2 untouched.
 - 2026-11-26 — P0 done and P1-1..3 done; data in local SQLite only.
 - 2026-11-26 — plan written. NYC browser ingest is running first; Bay Area work starts after it, because both share the single logged-in Chrome.

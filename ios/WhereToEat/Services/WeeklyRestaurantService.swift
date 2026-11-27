@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 
 enum WeeklyStatus {
     case ready([WeeklyRestaurant])
@@ -18,39 +17,45 @@ final class WeeklyRestaurantService: ObservableObject {
     /// Discovery deals its first card from a shuffle of the top 25 (its
     /// band size), so warming these makes the first card's photo instant.
     private static let prefetchCount = 25
-    /// Backend city key the deck is showing (`nyc` | `bay`). Follows
-    /// `LocationService.cityKey`: the Settings override first, then GPS.
-    @Published private(set) var activeCity: String = LocationService.shared.cityKey
+    /// Cities the deck can show: backend key → label for the Pick-page picker.
+    static let cities: [(key: String, label: String)] = [("nyc", "New York"), ("bay", "Bay Area")]
+    private static let selectedCityKey = "selected_city"
+
+    /// Backend city key the deck is showing (`nyc` | `bay`). Chosen explicitly
+    /// with the Pick-page city picker, persisted, defaults to `nyc`. GPS does
+    /// not switch it.
+    @Published private(set) var activeCity: String =
+        UserDefaults.standard.string(forKey: WeeklyRestaurantService.selectedCityKey) ?? "nyc"
 
     private let api = APIClient.shared
     private let cache = WeeklyCache.shared
     private var pollTask: Task<Void, Never>?
-    private var cancellables = Set<AnyCancellable>()
 
-    private init() {
-        // Re-resolve the city when the GPS fix arrives or the Settings
-        // override changes. `$currentLocation` emits the new value before the
-        // property is set, so compute from the emitted coordinate.
-        LocationService.shared.$currentLocation
-            .combineLatest(
-                NotificationCenter.default.publisher(for: .userProfileUpdated)
-                    .map { _ in () }
-                    .prepend(())
-            )
-            .map { coord, _ in
-                LocationService.cityKey(override: UserProfile.load().locationOverride, current: coord)
-            }
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] key in self?.switchCity(to: key) }
-            .store(in: &cancellables)
-    }
+    private init() {}
 
-    private func switchCity(to key: String) {
-        guard key != activeCity else { return }
+    /// Pick-page city picker entry point.
+    func selectCity(_ key: String) {
+        guard Self.cities.contains(where: { $0.key == key }), key != activeCity else { return }
+        UserDefaults.standard.set(key, forKey: Self.selectedCityKey)
         activeCity = key
+        pollTask?.cancel()  // polling for the previous city must not overwrite the new deck
         status = .building
         Task { await bootstrap(city: key) }
+    }
+
+    /// False when no restaurant in the current deck has a Resy / OpenTable link
+    /// (e.g. Bay Area before its booking backfill). Callers then skip the
+    /// "only bookable" filter instead of showing an empty deck.
+    var activeCityHasBookable: Bool {
+        switch status {
+        case .ready(let list), .stale(let list):
+            return list.contains { r in
+                !(r.resyBookingUrl ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+                    || !(r.opentableBookingUrl ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+            }
+        case .building, .error:
+            return true
+        }
     }
 
     /// Cold-start entry point. Replaces the old `fetch()` call from `RootView`.
@@ -78,9 +83,13 @@ final class WeeklyRestaurantService: ObservableObject {
         do {
             let result = try await api.requestConditional(
                 .weeklyRestaurants(city: city),
-                ifNoneMatch: cache.cached?.etag,
+                ifNoneMatch: etag(for: city),
                 as: WeeklyResponse.self
             )
+            // The city may have switched while this request was in flight
+            // (e.g. the GPS fix arrived). A late response for the old city
+            // must not overwrite the new city's deck or cache.
+            guard city == activeCity else { return }
             switch result {
             case .notModified:
                 if let entry = cache.cached, entry.city == city {
@@ -100,6 +109,7 @@ final class WeeklyRestaurantService: ObservableObject {
                 }
             }
         } catch {
+            guard city == activeCity else { return }
             status = .error(error.localizedDescription)
         }
     }
@@ -110,9 +120,10 @@ final class WeeklyRestaurantService: ObservableObject {
         do {
             let result = try await api.requestConditional(
                 .weeklyRestaurants(city: city),
-                ifNoneMatch: cache.cached?.etag,
+                ifNoneMatch: etag(for: city),
                 as: WeeklyResponse.self
             )
+            guard city == activeCity else { return }  // stale: city switched mid-flight
             switch result {
             case .notModified:
                 cache.bumpSavedAt()
@@ -146,6 +157,11 @@ final class WeeklyRestaurantService: ObservableObject {
     }
 
     // MARK: - Private
+
+    /// The cache holds one city; its etag is only meaningful for that city.
+    private func etag(for city: String) -> String? {
+        cache.cached?.city == city ? cache.cached?.etag : nil
+    }
 
     private func prefetchTopPhotos() {
         switch status {
@@ -182,6 +198,7 @@ final class WeeklyRestaurantService: ObservableObject {
                 guard !Task.isCancelled else { return }
                 do {
                     let wrapper = try await api.request(.weeklyRestaurants(city: city), as: WeeklyResponse.self)
+                    guard city == activeCity else { return }
                     if wrapper.status == "ready" {
                         status = .ready(wrapper.restaurants ?? [])
                         return  // stop polling once we have fresh data
