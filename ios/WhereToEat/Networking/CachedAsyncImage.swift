@@ -41,32 +41,18 @@ struct CachedAsyncImage<Content: View>: View {
             phase = .empty
             return
         }
-        let request = URLRequest(url: url)
-
         // 1) Synchronous cache hit. Instant; no async, no flicker.
-        if let cached = URLCache.shared.cachedResponse(for: request),
-           let img = UIImage(data: cached.data) {
+        if let cached = ImageCache.cachedData(for: url),
+           let img = UIImage(data: cached) {
             phase = .success(Image(uiImage: img))
             return
         }
 
-        // 2) Cache miss. Use returnCacheDataElseLoad so an offline relaunch
-        //    after the bytes were stored will still serve from cache rather
-        //    than throwing a network error.
-        var fallbackRequest = request
-        fallbackRequest.cachePolicy = .returnCacheDataElseLoad
-
+        // 2) Cache miss. Joins an in-flight prefetch for the same URL if
+        //    there is one. Layers 2–3 from the type doc live in
+        //    `ImageCache.data(for:)`.
         do {
-            let (data, response) = try await URLSession.shared.data(for: fallbackRequest)
-            // 3) Force-cache successful 200s so the next offline launch
-            //    always has the bytes — even if the origin sent
-            //    Cache-Control: no-store or omitted directives entirely.
-            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                URLCache.shared.storeCachedResponse(
-                    CachedURLResponse(response: response, data: data),
-                    for: request
-                )
-            }
+            let data = try await ImageCache.data(for: url)
             if let img = UIImage(data: data) {
                 phase = .success(Image(uiImage: img))
             } else {

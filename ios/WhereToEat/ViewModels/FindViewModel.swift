@@ -76,7 +76,7 @@ final class FindViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        Task { await weeklyService.bootstrap(city: "nyc") }
+        Task { await weeklyService.bootstrap(city: weeklyService.activeCity) }
     }
 
     /// Rows that actually have coordinates AND fall inside the map's

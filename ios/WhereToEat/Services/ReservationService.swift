@@ -103,14 +103,18 @@ final class ReservationService: ObservableObject {
 
     /// Ids of restaurants the current user has booked or blocked. Used by
     /// Discovery to drop them from the card deck.
+    /// On failure these return the last ids the server sent (persisted per
+    /// user id) rather than an empty set.
     func fetchReservedRestaurantIds() async -> Set<UUID> {
         do {
             let resp = try await api.request(Endpoint.userReservationsList,
                                              as: RemoteReservationsResponse.self)
-            return Set(resp.reservations.compactMap { UUID(uuidString: $0.restaurantId) })
+            let ids = Set(resp.reservations.compactMap { UUID(uuidString: $0.restaurantId) })
+            saveRemoteIds(ids, kind: "reserved")
+            return ids
         } catch {
             print("[ReservationService] fetchReservedRestaurantIds failed: \(error.localizedDescription)")
-            return []
+            return lastKnownReservedIds
         }
     }
 
@@ -118,11 +122,31 @@ final class ReservationService: ObservableObject {
         do {
             let resp = try await api.request(Endpoint.userBlocksList,
                                              as: RemoteBlocksResponse.self)
-            return Set(resp.blocks.compactMap { UUID(uuidString: $0.restaurantId) })
+            let ids = Set(resp.blocks.compactMap { UUID(uuidString: $0.restaurantId) })
+            saveRemoteIds(ids, kind: "blocked")
+            return ids
         } catch {
             print("[ReservationService] fetchBlockedRestaurantIds failed: \(error.localizedDescription)")
-            return []
+            return lastKnownBlockedIds
         }
+    }
+
+    /// Last server answers, so the Discovery deck can be built before the
+    /// network replies.
+    var lastKnownReservedIds: Set<UUID> { loadRemoteIds(kind: "reserved") }
+    var lastKnownBlockedIds: Set<UUID>  { loadRemoteIds(kind: "blocked") }
+
+    private func remoteIdsKey(_ kind: String) -> String {
+        "remoteIds.\(kind).\(IdentityService.shared.userId)"
+    }
+
+    private func loadRemoteIds(kind: String) -> Set<UUID> {
+        let raw = UserDefaults.standard.stringArray(forKey: remoteIdsKey(kind)) ?? []
+        return Set(raw.compactMap { UUID(uuidString: $0) })
+    }
+
+    private func saveRemoteIds(_ ids: Set<UUID>, kind: String) {
+        UserDefaults.standard.set(ids.map(\.uuidString), forKey: remoteIdsKey(kind))
     }
 
     struct RemoteBlockAck: Decodable {

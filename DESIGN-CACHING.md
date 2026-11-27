@@ -35,8 +35,8 @@ Every cold start. As the user base grows this saturates Neon and bills Vercel fu
 | age of cache | UI behavior on cold start | network behavior |
 |---|---|---|
 | 0–6 h | render cache, **no fetch** | none |
-| 6–24 h (warm) | render cache immediately, status `.ready` | background `If-None-Match`; replace silently if 200, no-op if 304 |
-| > 24 h or no cache | render cache if any (as `.stale`), else `.building` | foreground fetch + full hydrate |
+| 6–72 h (warm; was 24 h until 2026-11-26) | render cache immediately, status `.ready` | background `If-None-Match`; replace silently if 200, no-op if 304 |
+| > 72 h, Monday rollover, or no cache | render cache if any (as `.stale`), else `.building` | foreground fetch + full hydrate |
 
 Background refresh is **invisible** — no spinner, no banner. The user only sees a state change if the cache becomes empty (`.building`) or fetch errors when there's no fallback.
 
@@ -280,7 +280,14 @@ Round-2 changes after profiling: (a) `MAX(updated_at)` etag flipped to a **conte
 
 **Single-query hydrate gotcha:** the tagged-template doesn't accept a runtime-built `IN (...)` natively, so we synthesize a `TemplateStringsArray` (`[head, ',', ',', …, tail]`) and call `sql(tsa, ...ids)` directly. This produces a normal parameterized query — `$1, $2, …` on Neon, `?, ?, …` on SQLite. No raw-string interpolation, no injection surface. The `sqlRaw` helper added to `db.ts` was an early experiment using Neon's `sql.query(...)` — left in place for future use, but unused on the hot path.
 
-### Step 5 — (deferred) Vercel KV layer
+### Step 5 — first-card latency pass ✅ Done (2026-11-26, backend not yet deployed)
+
+- **Discovery no longer waits on user filters.** `loadCards` used to `await` `/api/user/reservations` + `/api/user/blocks` before building the deck, so every Pick-tab visit paid two function round-trips (with possible cold starts) even on a fresh cache. Now the deck builds from the last-known ids (`ReservationService.lastKnown*Ids`, UserDefaults keyed by user id). `applyRemoteFilters` prunes only the cards the user hasn't reached once fresh ids arrive.
+- **Photo prefetch + in-flight dedup.** `ImageCache.data(for:)` is the one loader. A view that appears while a prefetch for the same URL is running joins that download. Prefetch targets: the top 25 (Discovery's shuffle band) on every `WeeklyRestaurantService.status` publish, the 3 Home picks, and the current + next 3 Discovery cards.
+- **Warm tier 24h → 72h.** Past the warm tier, `bootstrap` awaits the network and holds up the Discovery build. The deck only changes weekly, and the Monday rollover check still forces a fetch.
+- **`weekly.ts` round-trips 8 → 2** on a cache miss: the etag pair runs in parallel, then one `Promise.all` covers latest run, running run, stale-run reap, restaurants and sources. `fetchSources` selects by a city subquery, so it doesn't need the row ids first. The debug-only full-table scan was removed. The 304 path is unchanged (one parallel stage).
+
+### Step 6 — (deferred) Vercel KV layer
 
 Only if Neon shows pressure after Step 4. Edge caching (Step 4) handles the bulk of repeated requests; KV would close the gap when an etag changes and the edge needs to pull a fresh body. Add a `weekly:{city}:{etag}` cache in front of the hydration step. Defer until measured.
 
@@ -288,11 +295,12 @@ Only if Neon shows pressure after Step 4. Edge caching (Step 4) handles the bulk
 
 ## Open follow-ups (track in TASKS.md, not now)
 
-- Vercel KV cache (Step 5 above) — defer until measured.
-- Photo-prefetch-after-deck-load — defer until users complain about first-card lag.
+- Vercel KV cache (Step 6 above) — defer until measured.
+- Photo-prefetch-after-deck-load — ✅ Step 5.
 - Etag-coordinated caching for `/api/user/reservations` + `/api/user/blocks` — same `If-None-Match` discipline as `/weekly`.
-- Bootstrap-time prefetch of the 3 home-pick photos so the first home view is instant.
-- iOS TTL bump (24h → 72h) — pipeline runs weekly, so 24h sends 7× more conditional requests than necessary.
+- Bootstrap-time prefetch of the 3 home-pick photos — ✅ Step 5.
+- iOS TTL bump (24h → 72h) — ✅ Step 5 (warm tier).
+- Mirror every Places photo to Blob (TASKS LAT-2) — most prod `photoUrl`s are raw Places URLs: extra 302 hop, billed per load, ~25% now 400.
 - Settings → "Clear cache" debug button — nice-to-have for QA.
 - Memory-pressure hook — `URLCache.shared.removeAllCachedResponses()` on `didReceiveMemoryWarning`.
 - Hit/miss telemetry — `logger.success('weekly.{not_modified|served.ready|served.stale}')` rolled up in a daily Vercel log query, to decide whether KV is worth adding now or in three months.

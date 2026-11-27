@@ -92,30 +92,10 @@ function parseRows(rows: Record<string, unknown>[]): WeeklyRestaurant[] {
   }));
 }
 
-/**
- * Hydrate each row with its per-post xhs_sources entries, sorted by likes
- * DESC. **One** SQL round-trip regardless of row count.
- *
- * The tagged template can't accept a runtime-built `IN (...)` cleanly, so
- * we synthesize a TemplateStringsArray on the fly: one fragment per
- * placeholder. The result is a normal parameterized query — `$1, $2, ...`
- * on Neon, `?, ?, ...` on SQLite — driven through the same `sql` API
- * everything else uses.
- */
-async function hydrateSources(rows: Record<string, unknown>[]): Promise<Record<string, unknown>[]> {
-  if (rows.length === 0) return rows;
-
-  const ids = rows.map((r) => r.id).filter((id): id is string => typeof id === 'string');
-  if (ids.length === 0) {
-    for (const r of rows) r.sources = [];
-    return rows;
-  }
-
-  // Build strings for the tagged template:
-  //   strings[0]   = "<SELECT ... IN ("
-  //   strings[1..N-1] = ","
-  //   strings[N]   = ") ORDER BY likes DESC"
-  const head = `
+/** Every source row for the city's available restaurants, likes DESC.
+ *  Keyed by the same WHERE as `fetchAvailable` so both run in parallel. */
+async function fetchSources(city: string): Promise<Array<XHSSource & { restaurantId: string }>> {
+  const rows = await sql`
     SELECT
       restaurant_id   AS "restaurantId",
       post_url        AS "postUrl",
@@ -126,14 +106,21 @@ async function hydrateSources(rows: Record<string, unknown>[]): Promise<Record<s
       author,
       source_title    AS "sourceTitle"
     FROM xhs_sources
-    WHERE restaurant_id IN (`;
-  const tail = `) ORDER BY likes DESC`;
-  const stringsArr: string[] = [head];
-  for (let i = 1; i < ids.length; i++) stringsArr.push(',');
-  stringsArr.push(tail);
-  const tsa = Object.assign(stringsArr, { raw: stringsArr.slice() }) as unknown as TemplateStringsArray;
-  const sourceRows = (await sql(tsa, ...ids)) as unknown as Array<XHSSource & { restaurantId: string }>;
+    WHERE restaurant_id IN (
+      SELECT id FROM xhs_restaurants
+      WHERE city = ${city}
+        AND is_available_this_week = 1
+        AND google_maps_url IS NOT NULL
+    )
+    ORDER BY likes DESC
+  `;
+  return rows as unknown as Array<XHSSource & { restaurantId: string }>;
+}
 
+function attachSources(
+  rows: Record<string, unknown>[],
+  sourceRows: Array<XHSSource & { restaurantId: string }>,
+): Record<string, unknown>[] {
   const sourcesById = new Map<string, XHSSource[]>();
   for (const s of sourceRows) {
     const stripped: XHSSource = {
@@ -149,7 +136,6 @@ async function hydrateSources(rows: Record<string, unknown>[]): Promise<Record<s
     if (list) list.push(stripped);
     else sourcesById.set(s.restaurantId, [stripped]);
   }
-
   for (const row of rows) {
     row.sources = sourcesById.get(row.id as string) ?? [];
   }
@@ -184,7 +170,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   // initially omitted; symptom was the $/$$/$$$/$$$$ chip not showing
   // up after the 2026-04-28 backfill.
   // Cross-dialect-safe: the projection is plain SQL; we hash in JS.
-  const etagCols = await sql`
+  const [etagCols, sourcesEtagCols] = await Promise.all([sql`
     SELECT id,
            photo_url,
            google_rating,
@@ -201,14 +187,13 @@ async function handler(req: VercelRequest, res: VercelResponse) {
            longitude,
            price_level
     FROM xhs_restaurants
-    WHERE is_available_this_week = 1 AND google_maps_url IS NOT NULL
+    WHERE city = ${city} AND is_available_this_week = 1 AND google_maps_url IS NOT NULL
     ORDER BY id
-  `;
-  const sourcesEtagCols = await sql`
+  `, sql`
     SELECT restaurant_id, post_url, likes, source_type
     FROM xhs_sources
     ORDER BY restaurant_id, post_url
-  `;
+  `]);
   const etag = etagCols.length > 0
     ? '"' + crypto
         .createHash('md5')
@@ -235,77 +220,67 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Log top 10 restaurants in DB for debugging
-  const allForDebug = await sql`
-    SELECT restaurant_name AS "restaurantName", google_display_name AS "googleDisplayName",
-           mention_count AS "mentionCount", total_likes AS "totalLikes",
-           post_created_at AS "postCreatedAt",
-           is_available_this_week AS "isAvailable", google_maps_url AS "googleMapsUrl"
-    FROM xhs_restaurants
-  `;
-  const top10 = sortByScore(allForDebug as Record<string, unknown>[]).slice(0, 10);
-  if (top10.length > 0) {
-    console.log(`[weekly] Top ${top10.length} restaurants in DB:`);
-    top10.forEach((r, i) => {
-      const name = (r.googleDisplayName as string) || (r.restaurantName as string);
-      const available = r.isAvailable ? '✓' : '✗';
-      const mapped = r.googleMapsUrl ? '📍' : '  ';
-      console.log(`  ${i + 1}. ${mapped}${available} ${name} (score: ${score(r).toFixed(1)})`);
-    });
-  }
-
-  // Find the most recent completed run
-  const [latestCompleted] = await sql`
+  // Every query below is independent, so they run as one parallel stage:
+  // a cache-miss request costs two DB round-trips (etag, then this) instead
+  // of one per query. Restaurants and sources are fetched for the whole
+  // city; the latest-run filter is applied in JS.
+  // Runs older than 10 minutes still flagged 'running' are timed-out
+  // functions (Hobby caps duration at 60s): the UPDATE reaps them and the
+  // running-run lookup ignores them, so the two don't need to be ordered.
+  const staleRunCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const [latestRows, runningRows, cityRows, sourceRows] = await Promise.all([
+    sql`
     SELECT id, completed_at
     FROM pipeline_runs
     WHERE city = ${city} AND status = 'completed'
-    ORDER BY completed_at DESC
+    -- NULLS LAST: Postgres sorts NULL first under DESC, and Neon holds a
+    -- legacy 'completed' run with NULL completed_at that would otherwise
+    -- shadow every real run (SQLite sorts NULL last, so local never showed it).
+    ORDER BY completed_at DESC NULLS LAST
     LIMIT 1
-  `;
+  `,
+    sql`
+    SELECT id, started_at
+    FROM pipeline_runs
+    WHERE city = ${city} AND status = 'running' AND started_at >= ${staleRunCutoff}
+    ORDER BY started_at DESC
+    LIMIT 1
+  `,
+    fetchAvailable(city),
+    fetchSources(city),
+    sql`
+    UPDATE pipeline_runs
+    SET status = 'failed',
+        error_message = 'reaped: function exceeded execution window'
+    WHERE city = ${city}
+      AND status = 'running'
+      AND started_at < ${staleRunCutoff}
+  `,
+  ]);
+  const latestCompleted = latestRows[0];
+  const runningRun = runningRows[0];
 
   const isFresh =
     latestCompleted &&
     Date.now() - new Date(latestCompleted.completed_at as string).getTime() <
       FRESHNESS_DAYS * MS_PER_DAY;
 
-  // Reap stale `running` rows older than 10 minutes — Vercel Hobby caps
-  // function duration at 60s, so any run still flagged 'running' past that
-  // window is a timed-out function whose DB row never got cleaned up.
-  await sql`
-    UPDATE pipeline_runs
-    SET status = 'failed',
-        error_message = 'reaped: function exceeded execution window'
-    WHERE city = ${city}
-      AND status = 'running'
-      AND started_at < ${new Date(Date.now() - 10 * 60 * 1000).toISOString()}
-  `;
-
-  // Check if a run is currently in progress
-  const [runningRun] = await sql`
-    SELECT id, started_at
-    FROM pipeline_runs
-    WHERE city = ${city} AND status = 'running'
-    ORDER BY started_at DESC
-    LIMIT 1
-  `;
-
   // Serve the last completed run whenever one exists — even if a fresh
   // pipeline is currently running. Hobby-plan Vercel functions often time
   // out on the 5-minute pipeline, leaving stale `status='running'` rows in
   // the DB; we don't want that to lock the iOS client out of all data.
   if (latestCompleted) {
-    let rows = await fetchAvailable({ pipelineRunId: latestCompleted.id as string });
+    const runRows = cityRows.filter((r) => String(r.pipelineRunId) === String(latestCompleted.id));
     // If latest run had no restaurants (e.g. rate-limited), fall back to all available
-    if (rows.length === 0) {
-      rows = await fetchAvailable({ pipelineRunId: null });
-    }
+    const rows = runRows.length > 0 ? runRows : cityRows;
+    for (const r of rows) delete r.pipelineRunId;
     const responseStatus = isFresh ? 'ready' : 'stale';
     logger.success(`weekly.served.${responseStatus}`, { city, count: rows.length, building: !!runningRun });
     return res.status(200).json(
       ok({
         status: responseStatus,
         etag,
-        restaurants: parseRows(filterToCity(sortByScore(await hydrateSources(rows)), city)),
+        restaurants: parseRows(filterToCity(sortByScore(attachSources(rows, sourceRows)), city)),
         pipelineStartedAt: runningRun ? new Date(runningRun.started_at as string).toISOString() : undefined,
       })
     );
@@ -322,92 +297,45 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     );
   }
 
-  // No fresh run and nothing in progress. The HTTP-triggered pipeline route
-  // is archived (we run the pipeline locally and push to Neon), so we just
-  // serve whatever's available rather than auto-triggering on a 404 endpoint.
-  if (latestCompleted) {
-    const rows = await fetchAvailable({ pipelineRunId: null });
-    logger.success('weekly.served.stale', { city, count: rows.length });
-    return res.status(200).json(
-      ok({
-        status: 'stale',
-        etag,
-        restaurants: parseRows(filterToCity(sortByScore(await hydrateSources(rows)), city)),
-      })
-    );
-  }
-
   logger.success('weekly.building.first', { city });
   return res.status(200).json(ok({ status: 'building' }));
 }
 
-async function fetchAvailable(opts: { pipelineRunId: string | null }): Promise<Record<string, unknown>[]> {
-  const rows = opts.pipelineRunId
-    ? await sql`
-        SELECT
-          id,
-          restaurant_name      AS "restaurantName",
-          address,
-          borough,
-          neighborhood,
-          cuisine_type         AS "cuisineType",
-          recommendation,
-          post_url             AS "postUrl",
-          post_created_at      AS "postCreatedAt",
-          mention_count        AS "mentionCount",
-          total_likes          AS "totalLikes",
-          google_place_id      AS "googlePlaceId",
-          google_maps_url      AS "googleMapsUrl",
-          google_display_name  AS "googleDisplayName",
-          website_url          AS "websiteUrl",
-          photo_url            AS "photoUrl",
-          photo_urls           AS "photoUrls",
-          features             AS "features",
-          google_rating        AS "googleRating",
-          google_user_rating_count AS "googleUserRatingCount",
-          instagram_url        AS "instagramUrl",
-          resy_booking_url     AS "resyBookingUrl",
-          opentable_booking_url AS "opentableBookingUrl",
-          latitude             AS "latitude",
-          longitude            AS "longitude",
-          price_level          AS "priceLevel"
-        FROM xhs_restaurants
-        WHERE pipeline_run_id = ${opts.pipelineRunId}
-          AND is_available_this_week = 1
-          AND google_maps_url IS NOT NULL
-      `
-    : await sql`
-        SELECT
-          id,
-          restaurant_name      AS "restaurantName",
-          address,
-          borough,
-          neighborhood,
-          cuisine_type         AS "cuisineType",
-          recommendation,
-          post_url             AS "postUrl",
-          post_created_at      AS "postCreatedAt",
-          mention_count        AS "mentionCount",
-          total_likes          AS "totalLikes",
-          google_place_id      AS "googlePlaceId",
-          google_maps_url      AS "googleMapsUrl",
-          google_display_name  AS "googleDisplayName",
-          website_url          AS "websiteUrl",
-          photo_url            AS "photoUrl",
-          photo_urls           AS "photoUrls",
-          features             AS "features",
-          google_rating        AS "googleRating",
-          google_user_rating_count AS "googleUserRatingCount",
-          instagram_url        AS "instagramUrl",
-          resy_booking_url     AS "resyBookingUrl",
-          opentable_booking_url AS "opentableBookingUrl",
-          latitude             AS "latitude",
-          longitude            AS "longitude",
-          price_level          AS "priceLevel"
-        FROM xhs_restaurants
-        WHERE is_available_this_week = 1
-          AND google_maps_url IS NOT NULL
-      `;
+async function fetchAvailable(city: string): Promise<Record<string, unknown>[]> {
+  const rows = await sql`
+    SELECT
+      id,
+      pipeline_run_id      AS "pipelineRunId",
+      restaurant_name      AS "restaurantName",
+      address,
+      borough,
+      neighborhood,
+      cuisine_type         AS "cuisineType",
+      recommendation,
+      post_url             AS "postUrl",
+      post_created_at      AS "postCreatedAt",
+      mention_count        AS "mentionCount",
+      total_likes          AS "totalLikes",
+      google_place_id      AS "googlePlaceId",
+      google_maps_url      AS "googleMapsUrl",
+      google_display_name  AS "googleDisplayName",
+      website_url          AS "websiteUrl",
+      photo_url            AS "photoUrl",
+      photo_urls           AS "photoUrls",
+      features             AS "features",
+      google_rating        AS "googleRating",
+      google_user_rating_count AS "googleUserRatingCount",
+      instagram_url        AS "instagramUrl",
+      resy_booking_url     AS "resyBookingUrl",
+      opentable_booking_url AS "opentableBookingUrl",
+      latitude             AS "latitude",
+      longitude            AS "longitude",
+      price_level          AS "priceLevel"
+    FROM xhs_restaurants
+    WHERE city = ${city}
+      AND is_available_this_week = 1
+      AND google_maps_url IS NOT NULL
+  `;
   return rows as Record<string, unknown>[];
 }
 

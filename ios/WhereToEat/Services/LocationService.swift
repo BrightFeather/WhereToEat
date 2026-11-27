@@ -51,6 +51,22 @@ final class LocationService: ObservableObject {
 
     var isUsingOverride: Bool { cityOverride != nil }
 
+    /// Backend city key for the weekly deck (`/api/restaurants/weekly?city=`).
+    var cityKey: String {
+        Self.cityKey(override: cityOverride, current: currentLocation)
+    }
+
+    /// `"bay"` when the effective coordinate (Settings override first, then GPS)
+    /// is inside the SF Bay Area box, else `"nyc"` (also the no-location default).
+    /// Box matches `CITY_META.bay.bounds` in backend/api/_lib/cityRegions.ts.
+    static func cityKey(override: City?, current: CLLocationCoordinate2D?) -> String {
+        let lat = override?.latitude ?? current?.latitude
+        let lng = override?.longitude ?? current?.longitude
+        guard let lat, let lng else { return "nyc" }
+        let inBay = (36.95...38.65).contains(lat) && (-123.15 ... -121.45).contains(lng)
+        return inBay ? "bay" : "nyc"
+    }
+
     init() {
         manager.desiredAccuracy = kCLLocationAccuracyKilometer
         manager.delegate = delegate

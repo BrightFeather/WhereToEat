@@ -7,7 +7,9 @@ final class DiscoveryViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var buildingMessage: String? = nil
     @Published var errorMessage: String?
-    @Published var currentIndex: Int = 0
+    @Published var currentIndex: Int = 0 {
+        didSet { prefetchUpcomingPhotos() }
+    }
     @Published var likedRestaurant: Restaurant?
     @Published var isDeckEmpty: Bool = false
     @Published var availableNeighborhoods: [String] = []
@@ -67,6 +69,15 @@ final class DiscoveryViewModel: ObservableObject {
                 self.applyFilter()
             }
             .store(in: &cancellables)
+        // City switch → reload the deck for the new city.
+        weeklyService.$activeCity
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                Task { await self.loadCards() }
+            }
+            .store(in: &cancellables)
     }
 
     private var pendingInitialFilter: String?
@@ -85,14 +96,15 @@ final class DiscoveryViewModel: ObservableObject {
         errorMessage = nil
         buildingMessage = nil
 
-        // Pull the user's server-side reserved + blocked ids in parallel with
-        // the weekly fetch. A failure on either is non-fatal — we just end up
-        // with an empty filter set and show the full deck (safe fallback).
+        // Build the deck from the last-known server-side reserved + blocked
+        // ids so the first card never waits on those two requests. The fresh
+        // answers arrive after the deck is up and only prune cards the user
+        // hasn't reached yet (see `applyRemoteFilters`).
+        remoteReservedIds = reservationService.lastKnownReservedIds
+        remoteBlockedIds  = reservationService.lastKnownBlockedIds
         async let reservedTask = reservationService.fetchReservedRestaurantIds()
         async let blockedTask  = reservationService.fetchBlockedRestaurantIds()
-        await weeklyService.bootstrap(city: "nyc")
-        remoteReservedIds = await reservedTask
-        remoteBlockedIds  = await blockedTask
+        await weeklyService.bootstrap(city: weeklyService.activeCity)
 
         switch weeklyService.status {
         case .ready(let weekly), .stale(let weekly):
@@ -120,6 +132,26 @@ final class DiscoveryViewModel: ObservableObject {
         }
 
         isLoading = false
+        applyRemoteFilters(reserved: await reservedTask, blocked: await blockedTask)
+    }
+
+    /// Drops newly reserved/blocked restaurants from the part of the deck the
+    /// user hasn't swiped yet. The card on screen stays put, and the swiped
+    /// prefix is untouched so `currentIndex` and undo keep working.
+    private func applyRemoteFilters(reserved: Set<UUID>, blocked: Set<UUID>) {
+        guard reserved != remoteReservedIds || blocked != remoteBlockedIds else { return }
+        remoteReservedIds = reserved
+        remoteBlockedIds  = blocked
+
+        let currentId = currentCard?.id
+        let shouldDrop: (Restaurant) -> Bool = { card in
+            card.id != currentId && (reserved.contains(card.id) || blocked.contains(card.id))
+        }
+        allCards.removeAll(where: shouldDrop)
+        guard currentIndex < cards.count else { return }
+        cards = Array(cards[..<currentIndex]) + cards[currentIndex...].filter { !shouldDrop($0) }
+        isDeckEmpty = currentIndex >= cards.count
+        prefetchUpcomingPhotos()
     }
 
     private func buildDeck(from weekly: [WeeklyRestaurant]) {
@@ -295,6 +327,13 @@ final class DiscoveryViewModel: ObservableObject {
         }
         currentIndex = 0
         isDeckEmpty = cards.isEmpty
+    }
+
+    /// Current card plus the next three, so a swipe never waits on a photo.
+    private func prefetchUpcomingPhotos() {
+        guard currentIndex < cards.count else { return }
+        let end = min(currentIndex + 4, cards.count)
+        ImageCache.prefetch(cards[currentIndex..<end].compactMap(\.primaryPhotoURL))
     }
 
     /// Mirror of `HomeViewModel.matchesEnabledSources` for the unified

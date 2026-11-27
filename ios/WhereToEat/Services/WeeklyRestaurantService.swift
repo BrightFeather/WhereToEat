@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 enum WeeklyStatus {
     case ready([WeeklyRestaurant])
@@ -11,18 +12,51 @@ enum WeeklyStatus {
 final class WeeklyRestaurantService: ObservableObject {
     static let shared = WeeklyRestaurantService()
 
-    @Published var status: WeeklyStatus = .building
+    @Published var status: WeeklyStatus = .building {
+        didSet { prefetchTopPhotos() }
+    }
+    /// Discovery deals its first card from a shuffle of the top 25 (its
+    /// band size), so warming these makes the first card's photo instant.
+    private static let prefetchCount = 25
+    /// Backend city key the deck is showing (`nyc` | `bay`). Follows
+    /// `LocationService.cityKey`: the Settings override first, then GPS.
+    @Published private(set) var activeCity: String = LocationService.shared.cityKey
 
     private let api = APIClient.shared
     private let cache = WeeklyCache.shared
     private var pollTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
-    private init() {}
+    private init() {
+        // Re-resolve the city when the GPS fix arrives or the Settings
+        // override changes. `$currentLocation` emits the new value before the
+        // property is set, so compute from the emitted coordinate.
+        LocationService.shared.$currentLocation
+            .combineLatest(
+                NotificationCenter.default.publisher(for: .userProfileUpdated)
+                    .map { _ in () }
+                    .prepend(())
+            )
+            .map { coord, _ in
+                LocationService.cityKey(override: UserProfile.load().locationOverride, current: coord)
+            }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] key in self?.switchCity(to: key) }
+            .store(in: &cancellables)
+    }
+
+    private func switchCity(to key: String) {
+        guard key != activeCity else { return }
+        activeCity = key
+        status = .building
+        Task { await bootstrap(city: key) }
+    }
 
     /// Cold-start entry point. Replaces the old `fetch()` call from `RootView`.
     /// Decision tree (see DESIGN-CACHING.md § Freshness model):
     ///   - cache fresh (< 6h, same weekStart): publish, **no network**
-    ///   - cache warm  (6–24h):                 publish, kick invisible refresh
+    ///   - cache warm  (6–72h):                 publish, kick invisible refresh
     ///   - cache stale or missing:              fall through to foreground fetch
     func bootstrap(city: String = "nyc") async {
         if let entry = cache.cached, entry.city == city {
@@ -35,7 +69,7 @@ final class WeeklyRestaurantService: ObservableObject {
                 Task { await refreshIfChanged(city: city) }
                 return
             }
-            // > 24h or week rolled over → fall through to foreground fetch.
+            // > 72h or week rolled over → fall through to foreground fetch.
         }
         await fetch(city: city)
     }
@@ -112,6 +146,17 @@ final class WeeklyRestaurantService: ObservableObject {
     }
 
     // MARK: - Private
+
+    private func prefetchTopPhotos() {
+        switch status {
+        case .ready(let list), .stale(let list):
+            ImageCache.prefetch(list.prefix(Self.prefetchCount).compactMap {
+                $0.photoUrl.flatMap { URL(string: $0) }
+            })
+        case .building, .error:
+            break
+        }
+    }
 
     private func apply(_ wrapper: WeeklyResponse, city: String) {
         pollTask?.cancel()

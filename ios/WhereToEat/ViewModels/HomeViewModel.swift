@@ -44,7 +44,7 @@ final class HomeViewModel: ObservableObject {
     private let notificationService = NotificationService.shared
     private let weeklyService = WeeklyRestaurantService.shared
     private let regionsService = CityRegionsService.shared
-    private let city: String = "nyc"
+    private var city: String { weeklyService.activeCity }
     private var allRestaurants: [WeeklyRestaurant] = []
     private var cancellables = Set<AnyCancellable>()
 
@@ -98,6 +98,17 @@ final class HomeViewModel: ObservableObject {
                 // `UserProfile.displayName`, which can change without
                 // touching the filter set.
                 self.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+        // City switch (Settings override / new GPS fix): reload the region
+        // list for the filter chips. The deck itself is re-bootstrapped by
+        // WeeklyRestaurantService.switchCity.
+        weeklyService.$activeCity
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] key in
+                guard let self else { return }
+                Task { await self.regionsService.load(city: key) }
             }
             .store(in: &cancellables)
         Task { await regionsService.load(city: city) }
@@ -547,6 +558,9 @@ final class HomeViewModel: ObservableObject {
         weeklyCount = filtered.count
         previewRestaurants = filtered
         previewPhotoURLs = filtered.prefix(6).compactMap { $0.photoUrl.flatMap { URL(string: $0) } }
+        // HIDDEN GEM is drawn from the mid-ranked slice, outside the top-25
+        // photos WeeklyRestaurantService already warms.
+        ImageCache.prefetch(homePicks.compactMap { $0.restaurant.photoUrl.flatMap { URL(string: $0) } })
     }
 
     /// True if the restaurant has at least one source row whose `source_type`

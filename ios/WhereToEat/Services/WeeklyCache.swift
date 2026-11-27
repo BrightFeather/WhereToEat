@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Why this exists: every cold start used to fan out to ~600 Neon queries
 /// (one per `xhs_sources` row). With this cache the client renders the last
-/// payload immediately and only goes back to the server when the 24h TTL
+/// payload immediately and only goes back to the server when the 72h TTL
 /// expires — and even then sends `If-None-Match` so unchanged data costs a
 /// single indexed `MAX(updated_at)` read on the server.
 ///
@@ -45,8 +45,11 @@ final class WeeklyCache {
 
     /// 0–6h. Cold-start path skips the network entirely.
     var isFresh: Bool { ageHours.map { $0 < 6 } ?? false }
-    /// 6–24h. Cold-start renders cache immediately + kicks invisible refresh.
-    var isWarm:  Bool { ageHours.map { $0 < 24 } ?? false }
+    /// 6–72h. Cold-start renders cache immediately + kicks invisible refresh.
+    /// Past this, `bootstrap` awaits the network before returning, which
+    /// holds up Discovery's deck build. The deck only changes weekly and a
+    /// Monday rollover forces a fetch regardless, so 72h is safe.
+    var isWarm:  Bool { ageHours.map { $0 < 72 } ?? false }
 
     var ageHours: Double? {
         guard let saved = cached?.savedAt else { return nil }
@@ -61,7 +64,7 @@ final class WeeklyCache {
     }
 
     /// Caller already has the same etag from the server (304 path) — just
-    /// reset the 24h timer so we don't re-check on every cold start.
+    /// reset the 72h timer so we don't re-check on every cold start.
     func bumpSavedAt() {
         guard var entry = cached else { return }
         entry = WeeklyCacheEntry(
@@ -123,7 +126,7 @@ final class WeeklyCache {
 }
 
 /// Monday 00:00 in the user's local time zone — used to detect deck rollover
-/// independent of the 24h savedAt TTL. The pipeline runs Mondays at 10:00,
+/// independent of the 72h savedAt TTL. The pipeline runs Mondays at 10:00,
 /// so a cache from last Monday should always force a fresh fetch.
 func currentWeekStart(now: Date = .now, calendar: Calendar = .current) -> Date {
     var cal = calendar

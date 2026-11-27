@@ -23,4 +23,50 @@ enum ImageCache {
         )
         URLCache.shared = cache
     }
+
+    /// One download per URL at a time: a `CachedAsyncImage` that appears
+    /// while a prefetch for the same photo is running awaits that prefetch
+    /// instead of starting a second download.
+    @MainActor private static var inFlight: [URL: Task<Data, Error>] = [:]
+
+    static func cachedData(for url: URL) -> Data? {
+        URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data
+    }
+
+    @MainActor
+    static func data(for url: URL) async throws -> Data {
+        if let data = cachedData(for: url) { return data }
+        if let task = inFlight[url] { return try await task.value }
+        let task = Task { try await fetchAndStore(url) }
+        inFlight[url] = task
+        defer { inFlight[url] = nil }
+        return try await task.value
+    }
+
+    /// Warm the cache for photos the user is about to see. Cache hits are
+    /// skipped, so repeat calls cost nothing.
+    @MainActor
+    static func prefetch(_ urls: [URL]) {
+        for url in urls where inFlight[url] == nil && cachedData(for: url) == nil {
+            Task(priority: .utility) { _ = try? await data(for: url) }
+        }
+    }
+
+    /// `returnCacheDataElseLoad` so an offline relaunch serves stored bytes
+    /// instead of failing revalidation. Successful 200s are force-stored
+    /// because some Google Places photo redirects send no-store / no
+    /// Cache-Control at all.
+    private static func fetchAndStore(_ url: URL) async throws -> Data {
+        let request = URLRequest(url: url)
+        var fallbackRequest = request
+        fallbackRequest.cachePolicy = .returnCacheDataElseLoad
+        let (data, response) = try await URLSession.shared.data(for: fallbackRequest)
+        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+            URLCache.shared.storeCachedResponse(
+                CachedURLResponse(response: response, data: data),
+                for: request
+            )
+        }
+        return data
+    }
 }
