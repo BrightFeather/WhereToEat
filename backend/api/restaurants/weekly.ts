@@ -231,8 +231,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Every query below is independent, so they run as one parallel stage:
   // a cache-miss request costs two DB round-trips (etag, then this) instead
-  // of one per query. Restaurants and sources are fetched for the whole
-  // city; the latest-run filter is applied in JS.
+  // of one per query.
   // Runs older than 10 minutes still flagged 'running' are timed-out
   // functions (Hobby caps duration at 60s): the UPDATE reaps them and the
   // running-run lookup ignores them, so the two don't need to be ordered.
@@ -274,15 +273,14 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     Date.now() - new Date(latestCompleted.completed_at as string).getTime() <
       FRESHNESS_DAYS * MS_PER_DAY;
 
-  // Serve the last completed run whenever one exists — even if a fresh
-  // pipeline is currently running. Hobby-plan Vercel functions often time
-  // out on the 5-minute pipeline, leaving stale `status='running'` rows in
-  // the DB; we don't want that to lock the iOS client out of all data.
+  // The deck is every available restaurant for the city, not just the
+  // latest run: runs are partial (one ingest batch), and serving only the
+  // newest one shrank NYC from ~690 to ~160 on 2026-11-26. The latest run
+  // only decides ready vs stale. Served even while a pipeline is running —
+  // Hobby-plan timeouts leave stale `status='running'` rows that must not
+  // lock the client out.
   if (latestCompleted) {
-    const runRows = cityRows.filter((r) => String(r.pipelineRunId) === String(latestCompleted.id));
-    // If latest run had no restaurants (e.g. rate-limited), fall back to all available
-    const rows = runRows.length > 0 ? runRows : cityRows;
-    for (const r of rows) delete r.pipelineRunId;
+    const rows = cityRows;
     const responseStatus = isFresh ? 'ready' : 'stale';
     logger.success(`weekly.served.${responseStatus}`, { city, count: rows.length, building: !!runningRun });
     return res.status(200).json(
@@ -314,7 +312,6 @@ async function fetchAvailable(city: string): Promise<Record<string, unknown>[]> 
   const rows = await sql`
     SELECT
       id,
-      pipeline_run_id      AS "pipelineRunId",
       restaurant_name      AS "restaurantName",
       address,
       borough,

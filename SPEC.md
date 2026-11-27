@@ -738,7 +738,7 @@ The routes the iOS client calls today. The weekly XHS pipeline is **archived fro
 
 | # | Method | Route | Purpose |
 |---|---|---|---|
-| 1 | `GET` | `/api/restaurants/weekly?city=nyc\|bay` | Main discovery feed. Returns `ready` / `building` / `stale` envelope with the weekly restaurant deck: the restaurants touched by the city's latest completed pipeline run, falling back to all of the city's available rows when that run is empty. Rows, etag and fallback are filtered by `xhs_restaurants.city`. ETag-conditional: returns 304 on `If-None-Match` match. |
+| 1 | `GET` | `/api/restaurants/weekly?city=nyc\|bay` | Main discovery feed. Returns `ready` / `building` / `stale` envelope with the weekly restaurant deck: every `is_available_this_week = 1` row for the city that has a Google Maps link (NYC ≈ 684, bay 133 as of 2026-11-26). The city's latest completed pipeline run only decides `ready` (completed within 7 days) vs `stale`; it does not limit the rows. Rows and etag are filtered by `xhs_restaurants.city`. ETag-conditional: returns 304 on `If-None-Match` match. |
 | 2 | `POST` | `/api/restaurants/import-xhs` | Parses one XHS post link → multi-restaurant preview (Gemini extraction + Places enrichment). Returns array; iOS picks which to add. |
 | 3 | `PATCH` | `/api/restaurants/{id}/unavailable` | Flips `is_available_this_week = 0` after dislike / book / snooze. |
 | 4 | `GET` | `/api/locations?city=nyc\|bay` | City → borough (region) → neighborhood mapping for the filter chips. `bay` regions: San Francisco, East Bay, Peninsula, South Bay, North Bay (neighborhoods = SF neighborhoods / city names). |
