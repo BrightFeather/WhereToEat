@@ -279,7 +279,7 @@ struct HomeView: View {
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor { trait in
             trait.userInterfaceStyle == .dark
-                ? UIColor(red: 0.12, green: 0.07, blue: 0.04, alpha: 1.0)
+                ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // charcoal #161210
                 : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
         }
         appearance.shadowColor = .clear   // drop the default 1pt top hairline
@@ -315,20 +315,21 @@ extension Color {
     /// `homeBgMid` cream wash now via `WarmGradientBackground`.
     static let homeBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.18, green: 0.09, blue: 0.05, alpha: 1.0)
+            ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
             : UIColor(red: 1.00, green: 0.87, blue: 0.73, alpha: 1.0)
     })
     /// Background wash used by Home, My List, and Welcome — a calm cream that
     /// reads as "warm" without competing with the cards layered on top.
     static let homeBgMid = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.12, green: 0.07, blue: 0.04, alpha: 1.0)
+            ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // warm charcoal #161210
             : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
     })
-    /// Reserved for future accent use.
+    /// Card fill on the Home / My List wash. In dark mode it is *lighter*
+    /// than the page (#221C18 on #161210) so cards read as raised.
     static let homeBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.05, green: 0.03, blue: 0.02, alpha: 1.0)
+            ? UIColor(red: 0.133, green: 0.110, blue: 0.094, alpha: 1.0)   // #221C18
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)
     })
 
@@ -338,17 +339,17 @@ extension Color {
     /// the detail view to both the Home cream and the Discovery mint.
     static let detailBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.20, green: 0.10, blue: 0.05, alpha: 1.0)   // warm cocoa
+            ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
             : UIColor(red: 1.00, green: 0.86, blue: 0.71, alpha: 1.0)   // warm peach #FFDBB5
     })
     static let detailBgMid = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.10, green: 0.07, blue: 0.05, alpha: 1.0)
+            ? UIColor(red: 0.110, green: 0.090, blue: 0.078, alpha: 1.0)   // #1C1714
             : UIColor(red: 1.00, green: 0.95, blue: 0.87, alpha: 1.0)   // cream #FFF1DD
     })
     static let detailBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.06, green: 0.10, blue: 0.09, alpha: 1.0)
+            ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // #161210
             : UIColor(red: 0.88, green: 0.95, blue: 0.92, alpha: 1.0)   // soft mint #E1F2EA
     })
 
@@ -358,7 +359,7 @@ extension Color {
     /// against the cream wash. One token = one tweak when palette evolves.
     static let cardBorder = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.55, green: 0.42, blue: 0.25, alpha: 0.45)
+            ? UIColor(red: 1.00, green: 0.92, blue: 0.82, alpha: 0.10)   // faint cream edge
             : UIColor(red: 0.62, green: 0.42, blue: 0.18, alpha: 0.22)
     })
 
@@ -368,13 +369,28 @@ extension Color {
     /// card photo and the swipe pills stay neutral.
     static let discoveryBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.07, green: 0.13, blue: 0.12, alpha: 1.0)   // dark forest
+            ? UIColor(red: 0.110, green: 0.090, blue: 0.078, alpha: 1.0)   // #1C1714
             : UIColor(red: 0.85, green: 0.94, blue: 0.91, alpha: 1.0)   // soft mint #D9F0E8
     })
     static let discoveryBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.05, green: 0.06, blue: 0.06, alpha: 1.0)
+            ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // #161210
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)   // near-white cream
+    })
+
+    /// Fill for chips, pills and small buttons. Light: plain white (iOS
+    /// `systemBackground`). Dark: a warm charcoal card, because pure black
+    /// sits *below* the #161210 page and reads as a hole.
+    static let surface = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.133, green: 0.110, blue: 0.094, alpha: 1.0)   // #221C18
+            : UIColor.systemBackground.resolvedColor(with: trait)
+    })
+    /// Placeholder / inset fill. Light: `systemGray6`. Dark: #2A201A.
+    static let surfaceMuted = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
+            : UIColor.systemGray6.resolvedColor(with: trait)
     })
 }
 
@@ -789,7 +805,7 @@ private struct FilterChip: View {
                 .foregroundColor(isSelected ? .white : .primary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? Self.selectedFill : Color(.systemBackground))
+                .background(isSelected ? Self.selectedFill : Color.surface)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
@@ -820,7 +836,7 @@ private struct CuisineChip: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .frame(minWidth: 44)
-                .background(isSelected ? Self.boldOrange : Color(.systemBackground))
+                .background(isSelected ? Self.boldOrange : Color.surface)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
@@ -849,7 +865,7 @@ private struct NeighborhoodChip: View {
                 .background(
                     isSelected
                         ? AnyShapeStyle(Color.accentColor.opacity(0.85))
-                        : AnyShapeStyle(Color(.systemBackground))
+                        : AnyShapeStyle(Color.surface)
                 )
                 .overlay(
                     Capsule()

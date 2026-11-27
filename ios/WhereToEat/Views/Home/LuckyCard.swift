@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// "I'm feeling lucky" — last card on Home. Peach card palette: the detail
-/// page's peach → cream wash in light mode, warm cocoa in dark mode, with
+/// page's peach → cream wash in light mode, warm charcoal in dark mode, with
 /// Discovery's orange chip style. CRAVING / WHERE chip rows pick the inputs;
 /// only the button rolls.
 struct LuckyCard: View {
@@ -229,15 +229,15 @@ struct LuckyCard: View {
 
     private var palette: Palette {
         scheme == .dark
-            ? Palette(
-                background: [Color(rgb: 0x331A0D), Color(rgb: 0x26140A)],
-                border: Color(red: 0.55, green: 0.42, blue: 0.25, opacity: 0.45),
-                caption: Color(rgb: 0xFFA94D),
-                title: Color(rgb: 0xFFF0D9),
-                rowLabel: Color(rgb: 0xC9A27E),
-                chipFill: Color(rgb: 0x4A2A18),
-                chipText: Color(rgb: 0xFFB877),
-                fanEdge: Color(rgb: 0xFFF0D9))
+            ? Palette(   // Warm charcoal dark theme (DARK-1)
+                background: [Color(rgb: 0x2A201A), Color(rgb: 0x241C17)],
+                border: Color(rgb: 0xFF8A3D, opacity: 0.25),
+                caption: Color(rgb: 0xFF8A3D),
+                title: Color(rgb: 0xF4EADF),
+                rowLabel: Color(rgb: 0xA6998B),
+                chipFill: Color(rgb: 0x3A2E26),
+                chipText: Color(rgb: 0xFFC79A),
+                fanEdge: Color(rgb: 0xF4EADF))
             : Palette(
                 background: [Color(rgb: 0xFFDBB5), Color(rgb: 0xFFF1DD)],
                 border: Color(red: 0.62, green: 0.42, blue: 0.18, opacity: 0.28),

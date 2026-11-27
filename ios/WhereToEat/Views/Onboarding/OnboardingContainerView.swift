@@ -45,7 +45,7 @@ struct DietaryPreferenceView: View {
                         }
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(viewModel.selectedDietary.contains(tag)
-                                    ? Color.accentColor.opacity(0.15) : Color(.systemGray6))
+                                    ? Color.accentColor.opacity(0.15) : Color.surfaceMuted)
                         .foregroundColor(viewModel.selectedDietary.contains(tag) ? .accentColor : .primary)
                         .clipShape(Capsule())
                     }
@@ -97,7 +97,7 @@ struct PaymentSetupView: View {
                     Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
                 }
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.surfaceMuted)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 Text("Apple Pay will be used automatically. You'll always see a confirmation before any charge.")

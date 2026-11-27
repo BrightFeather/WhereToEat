@@ -272,7 +272,7 @@ struct FindView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(.systemBackground))
+        .background(Color.surface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
@@ -347,7 +347,7 @@ struct FindView: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.accentColor)
                 .frame(width: 44, height: 44)
-                .background(Color(.systemBackground))
+                .background(Color.surface)
                 .clipShape(Circle())
                 .overlay(
                     Circle().stroke(Color.cardBorder, lineWidth: 1)
@@ -488,7 +488,7 @@ private struct FindCuisineChip: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .frame(minWidth: 44)
-                .background(isSelected ? Self.boldOrange : Color(.systemBackground))
+                .background(isSelected ? Self.boldOrange : Color.surface)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
@@ -643,7 +643,7 @@ private struct FindSearchBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(.systemBackground))
+        .background(Color.surface)
         .clipShape(Capsule())
         .overlay(
             Capsule().stroke(Color.cardBorder, lineWidth: 1)

@@ -604,7 +604,7 @@ struct RestaurantDetailView: View {
                             .foregroundColor(.red)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color(.systemGray6))
+                            .background(Color.surfaceMuted)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                 }

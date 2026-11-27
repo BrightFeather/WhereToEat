@@ -262,7 +262,7 @@ struct LoginView: View {
             .foregroundColor(.primary)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(Color(.systemGray6))
+            .background(Color.surfaceMuted)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
