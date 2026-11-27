@@ -61,12 +61,22 @@ enum ImageCache {
         var fallbackRequest = request
         fallbackRequest.cachePolicy = .returnCacheDataElseLoad
         let (data, response) = try await URLSession.shared.data(for: fallbackRequest)
-        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+        if let httpResp = response as? HTTPURLResponse {
+            guard httpResp.statusCode == 200 else {
+                throw HTTPStatusError(code: httpResp.statusCode)
+            }
             URLCache.shared.storeCachedResponse(
                 CachedURLResponse(response: response, data: data),
                 for: request
             )
         }
         return data
+    }
+
+    /// The server answered, but not with the photo (404 expired, 403 blocked
+    /// store, …). Distinct from `URLError` so callers can tell "this photo is
+    /// dead" apart from "the phone is offline".
+    struct HTTPStatusError: Error {
+        let code: Int
     }
 }

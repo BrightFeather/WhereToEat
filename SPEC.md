@@ -178,6 +178,8 @@ Curated cards under a static `"This week's picks"` header. The section is **alwa
 | **New This Week** | green | Highest-ranked restaurant with `post_created_at` in the last 14 days. Falls back to the next top-ranked restaurant when no recent posts exist. (3-slot mode only.) |
 | **Hidden Gem** | purple | Mid-ranked (20–60% percentile) restaurant that has a bookable link (Resy / OpenTable). Chosen with the same daily seed as Top Pick. (3-slot mode only.) |
 
+**No gray photo tiles (2026-11-27).** Home picks only use restaurants with a photo URL. `HomeViewModel.verifyPickPhotos()` loads each pick's photo through `ImageCache` (which also warms it). If the server answers with an HTTP error (`ImageCache.HTTPStatusError`: 404 expired, 403 blocked store) or a non-image, that restaurant is excluded and the slot redraws, and the replacement gets the same check. That covers the sticky Top Pick too. Offline errors don't exclude anything. At most 30 swaps are made, so a wholesale photo outage doesn't walk the whole deck; past that, the placeholder shows.
+
 **Shared filter set** (same as the Discovery deck):
 - Server-side `user_reservations` — drop anything the user has already booked.
 - Server-side `user_blocked_restaurants` (with `blocked_until` in the future) — drop active blocks.
@@ -227,7 +229,7 @@ Restaurant photos throughout the app (home screen hero, card face, expanded card
 - Do not use Yelp photos, Xiaohongshu images, or scraper-sourced images as the primary photo
 - Google Places photo URL is fetched during the XHS pipeline (Places enrichment step) and **stored directly in the `xhs_restaurants` DB table** as `photo_url TEXT`
 - Photo URL format: `https://places.googleapis.com/v1/{photoName}/media?maxWidthPx=800&key={API_KEY}` — constructed from the `photos[0].name` field returned by `places:searchText`
-- If Google Places returns no photo, show a neutral placeholder (no fallback to other sources)
+- If Google Places returns no photo, show a neutral placeholder (no fallback to other sources). Exception: Home's "This week's picks" skips restaurants with no photo or a dead one rather than showing the placeholder (see § This week's picks)
 - This applies to: home screen hero card, discovery card face, expanded card carousel, booking confirmation screen
 
 ---

@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UIKit
 
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -45,6 +46,16 @@ final class HomeViewModel: ObservableObject {
     /// top, which the Reservations row directly above them will disambiguate.
     @Published private var remoteReservedIds: Set<UUID> = []
     @Published private var remoteBlockedIds: Set<UUID> = []
+
+    /// Restaurants whose Home photo came back as an HTTP error or a
+    /// non-image. They're left out of the pick slots so Home never shows a
+    /// gray placeholder tile. See `verifyPickPhotos()`.
+    @Published private var deadPhotoIds: Set<String> = []
+    private var probedPhotoURLs: Set<URL> = []
+    /// Stops the swap-and-recheck chain if photos fail wholesale (e.g. the
+    /// Blob store was suspended on 2026-11-27): past this, Home keeps the
+    /// placeholder rather than walking the whole deck.
+    private static let maxDeadPhotoSwaps = 30
 
     private let notificationService = NotificationService.shared
     private let weeklyService = WeeklyRestaurantService.shared
@@ -229,6 +240,7 @@ final class HomeViewModel: ObservableObject {
             if remoteReservedIds.contains(uuid) { return false }
             if remoteBlockedIds.contains(uuid)  { return false }
             if seen.contains(uuid)              { return false }
+            if !hasUsablePhoto(r)               { return false }
             if let record = weeklySession.swipedCards.first(where: { $0.restaurantId == uuid }) {
                 if record.decision == .blocked,
                    let until = record.blockedUntil, today < until { return false }
@@ -260,6 +272,7 @@ final class HomeViewModel: ObservableObject {
             // 1. Stickied id from earlier today, if it's still valid.
             if let cachedId = Self.cachedTopPickId(dateKey: dailyKey, userId: userId),
                let candidate = allRestaurants.first(where: { $0.id == cachedId }),
+               hasUsablePhoto(candidate),
                Self.isStickyTopPickValid(candidate,
                                          showOnlyReservable: reservableFilterActive,
                                          enabledSources: enabledSources,
@@ -309,6 +322,46 @@ final class HomeViewModel: ObservableObject {
         }
 
         return picks
+    }
+
+    /// The photo the Home pick card renders (`HomeView` uses the same rule).
+    static func homePhotoURL(_ r: WeeklyRestaurant) -> URL? {
+        guard let raw = r.photoUrls?.first ?? r.photoUrl, !raw.isEmpty else { return nil }
+        return URL(string: raw)
+    }
+
+    private func hasUsablePhoto(_ r: WeeklyRestaurant) -> Bool {
+        Self.homePhotoURL(r) != nil && !deadPhotoIds.contains(r.id)
+    }
+
+    /// Loads each pick's photo (sharing `ImageCache`'s download, so this also
+    /// warms it for the card). If the server refuses it or it isn't an image,
+    /// the restaurant is marked dead, `homePicks` recomputes without it, and
+    /// the replacement gets the same check. Offline errors are ignored: the
+    /// photo may be fine, and it is re-checked on the next filter pass.
+    private func verifyPickPhotos() {
+        for pick in homePicks {
+            guard let url = Self.homePhotoURL(pick.restaurant),
+                  !probedPhotoURLs.contains(url) else { continue }
+            probedPhotoURLs.insert(url)
+            let id = pick.restaurant.id
+            Task { [weak self] in
+                do {
+                    let data = try await ImageCache.data(for: url)
+                    if UIImage(data: data) == nil { self?.markPhotoDead(id) }
+                } catch is ImageCache.HTTPStatusError {
+                    self?.markPhotoDead(id)
+                } catch {
+                    self?.probedPhotoURLs.remove(url)
+                }
+            }
+        }
+    }
+
+    private func markPhotoDead(_ id: String) {
+        guard deadPhotoIds.count < Self.maxDeadPhotoSwaps else { return }
+        deadPhotoIds.insert(id)
+        verifyPickPhotos()
     }
 
     private static func pickStable(from pool: [WeeklyRestaurant], seed: UInt64) -> WeeklyRestaurant? {
@@ -566,8 +619,8 @@ final class HomeViewModel: ObservableObject {
         previewRestaurants = filtered
         previewPhotoURLs = filtered.prefix(6).compactMap { $0.photoUrl.flatMap { URL(string: $0) } }
         // HIDDEN GEM is drawn from the mid-ranked slice, outside the top-25
-        // photos WeeklyRestaurantService already warms.
-        ImageCache.prefetch(homePicks.compactMap { $0.restaurant.photoUrl.flatMap { URL(string: $0) } })
+        // photos WeeklyRestaurantService already warms; this also prefetches.
+        verifyPickPhotos()
     }
 
     /// True if the restaurant has at least one source row whose `source_type`
