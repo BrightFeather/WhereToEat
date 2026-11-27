@@ -70,6 +70,7 @@ struct WeeklyRestaurant: Codable, Identifiable {
     var instagramUrl: String?
     var resyBookingUrl: String?
     var opentableBookingUrl: String?
+    var tockBookingUrl: String?
     /// WGS84 coordinates from Google Places. Optional — older `xhs_restaurants`
     /// rows ingested before the migration may have null lat/lng. Find tab
     /// drops any row without coords from the map; the bottom-sheet list
@@ -100,11 +101,19 @@ struct WeeklyRestaurant: Codable, Identifiable {
     }
 
     /// Convert to the unified Restaurant model used by the card deck
+    /// Has a Resy, OpenTable or Tock link. Empty strings count as missing.
+    var isBookable: Bool {
+        [resyBookingUrl, opentableBookingUrl, tockBookingUrl].contains {
+            !($0 ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
     func toRestaurant() -> Restaurant {
         let googleMapsLink = googleMapsUrl.flatMap { URL(string: $0) }
         let resyUrl = resyBookingUrl.flatMap { URL(string: $0) }
         let opentableUrl = opentableBookingUrl.flatMap { URL(string: $0) }
-        let bookingUrl = resyUrl ?? opentableUrl ?? websiteUrl.flatMap { URL(string: $0) } ?? googleMapsLink
+        let tockUrl = tockBookingUrl.flatMap { URL(string: $0) }
+        let bookingUrl = resyUrl ?? opentableUrl ?? tockUrl ?? websiteUrl.flatMap { URL(string: $0) } ?? googleMapsLink
 
         // Use multi-photo array when available, fall back to single photoUrl
         let photos: [URL] = (photoUrls?.isEmpty == false ? photoUrls! : photoUrl.map { [$0] } ?? [])
@@ -115,6 +124,8 @@ struct WeeklyRestaurant: Codable, Identifiable {
             reservationSrc = ReservationSource(platform: .resy, venueId: "", directBookingURL: resyUrl)
         } else if let opentableUrl {
             reservationSrc = ReservationSource(platform: .opentable, venueId: "", directBookingURL: opentableUrl)
+        } else if let tockUrl {
+            reservationSrc = ReservationSource(platform: .tock, venueId: "", directBookingURL: tockUrl)
         } else {
             reservationSrc = nil
         }

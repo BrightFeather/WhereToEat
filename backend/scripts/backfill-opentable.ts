@@ -11,11 +11,15 @@
  *   OT_HEADLESS=1          attempt headless (usually fails Akamai — don't)
  *   OT_PROFILE_DIR=<path>  persistent Chrome profile location
  *   OT_LIMIT=<n>           cap how many restaurants to process (for testing)
- *   OT_CITY=<name>         city prefix for disambiguation (default "New York")
+ *   OT_CITY=<name>         OpenTable metro name used to filter matches (default "New York";
+ *                          "San Francisco Bay Area" for bay)
+ *   CITY=<key>             only rows with xhs_restaurants.city = key (e.g. bay)
+ *   NEON=1                 also write matches to Neon (fills empty columns only)
  */
 import Database from 'better-sqlite3';
 import path from 'path';
 import * as dotenv from 'dotenv';
+import { neon } from '@neondatabase/serverless';
 import { OpenTableSearcher, pickBestMatch, type OTMatch } from '../api/_lib/opentableSearch';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
@@ -46,17 +50,23 @@ async function searchForName(
 async function main() {
   const limit = process.env.OT_LIMIT ? parseInt(process.env.OT_LIMIT, 10) : undefined;
   const city = process.env.OT_CITY ?? 'New York';
+  const cityKey = process.env.CITY;
+  const neonUrl = process.env.DATABASE_URL || process.env.WHERE_TO_EAT_DATABASE_URL || process.env.WHERE_TO_EAT_POSTGRES_URL;
+  const neonSql = process.env.NEON === '1' && neonUrl ? neon(neonUrl) : null;
 
   // Resy is the primary booking provider. Only fall back to OpenTable for
   // restaurants without a Resy URL.
-  const rows = db.prepare(`
+  const stmt = db.prepare(`
     SELECT id, restaurant_name, google_display_name, address
     FROM xhs_restaurants
     WHERE opentable_booking_url IS NULL
       AND resy_booking_url IS NULL
+      AND tock_booking_url IS NULL
       AND is_available_this_week = 1
+      ${cityKey ? 'AND city = @cityKey' : ''}
     ${limit ? `LIMIT ${limit}` : ''}
-  `).all() as {
+  `);
+  const rows = (cityKey ? stmt.all({ cityKey }) : stmt.all()) as {
     id: string;
     restaurant_name: string;
     google_display_name: string | null;
@@ -106,6 +116,13 @@ async function main() {
         }
         const bookingUrl = `https://www.opentable.com/restaurant/profile/${found.rid}`;
         update.run(found.rid, bookingUrl, r.id);
+        if (neonSql) {
+          await neonSql`
+            UPDATE xhs_restaurants
+            SET opentable_rid = COALESCE(opentable_rid, ${found.rid}),
+                opentable_booking_url = COALESCE(opentable_booking_url, ${bookingUrl})
+            WHERE id = ${r.id}`;
+        }
         const nbh = found.neighborhood ? ` (${found.neighborhood})` : '';
         console.log(`✓ ${r.restaurant_name} → ${found.name}${nbh} rid=${found.rid}`);
         matched++;

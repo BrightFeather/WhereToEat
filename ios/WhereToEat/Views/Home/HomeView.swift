@@ -434,6 +434,7 @@ private struct HomePickCard: View {
     private var platform: ReservationPlatform? {
         if restaurant.resyBookingUrl?.isEmpty == false { return .resy }
         if restaurant.opentableBookingUrl?.isEmpty == false { return .opentable }
+        if restaurant.tockBookingUrl?.isEmpty == false { return .tock }
         return nil
     }
 

@@ -225,6 +225,7 @@ async function main() {
 
   // Pricing — Places New API `priceLevel` enum drives $/$$/$$$/$$$$.
   await sql`ALTER TABLE xhs_restaurants ADD COLUMN IF NOT EXISTS price_level TEXT`;
+  await sql`ALTER TABLE xhs_restaurants ADD COLUMN IF NOT EXISTS tock_booking_url TEXT`;
 
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider  TEXT NOT NULL DEFAULT 'anonymous'`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS apple_sub      TEXT`;

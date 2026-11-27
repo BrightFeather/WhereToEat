@@ -586,13 +586,7 @@ final class HomeViewModel: ObservableObject {
         return types.contains { enabled.contains($0) }
     }
 
-    /// A weekly card is "reservable" iff the pipeline resolved a Resy or OpenTable
-    /// booking URL. Empty strings count as missing.
-    private static func isReservable(_ r: WeeklyRestaurant) -> Bool {
-        let resy = r.resyBookingUrl?.trimmingCharacters(in: .whitespaces) ?? ""
-        let ot = r.opentableBookingUrl?.trimmingCharacters(in: .whitespaces) ?? ""
-        return !resy.isEmpty || !ot.isEmpty
-    }
+    private static func isReservable(_ r: WeeklyRestaurant) -> Bool { r.isBookable }
 
     // MARK: - Normalization helpers
 

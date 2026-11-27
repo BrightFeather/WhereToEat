@@ -49,10 +49,7 @@ final class WeeklyRestaurantService: ObservableObject {
     var activeCityHasBookable: Bool {
         switch status {
         case .ready(let list), .stale(let list):
-            return list.contains { r in
-                !(r.resyBookingUrl ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-                    || !(r.opentableBookingUrl ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-            }
+            return list.contains(where: \.isBookable)
         case .building, .error:
             return true
         }

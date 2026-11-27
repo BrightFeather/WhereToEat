@@ -49,6 +49,7 @@ interface WeeklyRestaurant {
   instagramUrl: string | null;
   resyBookingUrl: string | null;
   opentableBookingUrl: string | null;
+  tockBookingUrl: string | null;
   /** Google Places New API `priceLevel` enum
    *  (`PRICE_LEVEL_INEXPENSIVE`/`MODERATE`/`EXPENSIVE`/`VERY_EXPENSIVE`).
    *  iOS maps to $/$$/$$$/$$$$ on the card. Null when Places hasn't
@@ -189,6 +190,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
            instagram_url,
            resy_booking_url,
            opentable_booking_url,
+           tock_booking_url,
            mention_count,
            total_likes,
            post_created_at,
@@ -334,6 +336,7 @@ async function fetchAvailable(city: string): Promise<Record<string, unknown>[]> 
       instagram_url        AS "instagramUrl",
       resy_booking_url     AS "resyBookingUrl",
       opentable_booking_url AS "opentableBookingUrl",
+      tock_booking_url     AS "tockBookingUrl",
       latitude             AS "latitude",
       longitude            AS "longitude",
       price_level          AS "priceLevel"

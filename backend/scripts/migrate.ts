@@ -139,6 +139,7 @@ addCol('longitude', 'REAL');
 // / MODERATE / EXPENSIVE / VERY_EXPENSIVE); maps to $ / $$ / $$$ / $$$$ on
 // cards. Null when Places didn't classify the listing.
 addCol('price_level', 'TEXT');
+addCol('tock_booking_url', 'TEXT');
 // `updated_at` drives the etag the iOS client uses for `If-None-Match`
 // requests on /api/restaurants/weekly. The trigger below makes sure every
 // UPDATE bumps it without having to touch each writer (pipeline, backfill

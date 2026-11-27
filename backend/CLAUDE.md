@@ -165,6 +165,7 @@ npm run push-data            # one-shot SQLite → Neon dump (sqlite-to-neon.ts)
 npm run push-photos          # legacy: upload localhost-served photos to Blob
 npm run migrate-places-photos # legacy: superseded by mirror-photos (can't recover expired photos)
 npm run mirror-photos        # Places photo URLs → Blob on Neon, refreshing expired ones; run after every sync
+CITY=bay npx ts-node -T scripts/backfill-booking-links.ts  # Resy/OpenTable/Tock links from each site (headless Chrome) + Resy search; fills empty columns on Neon + SQLite
 npm run backfill-coords      # backfill lat/lng on existing rows
 npm run reset-deck           # local-only: wipe weekly deck + restart pipeline
 ```
