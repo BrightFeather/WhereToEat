@@ -10,6 +10,7 @@
     "push-data": "ts-node scripts/sqlite-to-neon.ts",
     "push-photos": "ts-node scripts/upload-photos.ts",
     "migrate-places-photos": "ts-node scripts/migrate-places-photos.ts",
+    "mirror-photos": "ts-node scripts/mirror-photos.ts",
     "backfill-coords": "ts-node scripts/backfill-coords.ts",
     "backfill-price": "ts-node scripts/backfill-price-level.ts",
     "topup-asian": "ts-node scripts/topup-asian-xhs.ts",

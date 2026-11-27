@@ -68,14 +68,20 @@ struct RestaurantCardView: View {
         }
     }
 
+    /// Also shown when a photo fails to load, so a dead URL doesn't read as
+    /// a photo that is still loading.
+    private var noPhotoPlaceholder: some View {
+        Color(.systemGray5)
+            .overlay(Image(systemName: "fork.knife").font(.system(size: 60)).foregroundColor(.secondary))
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
                 // Photo carousel
                 let urls = restaurant.photos.isEmpty ? [restaurant.primaryPhotoURL].compactMap { $0 } : restaurant.photos
                 if urls.isEmpty {
-                    Color(.systemGray5)
-                        .overlay(Image(systemName: "fork.knife").font(.system(size: 60)).foregroundColor(.secondary))
+                    noPhotoPlaceholder
                         .frame(width: geo.size.width, height: geo.size.height)
                         .contentShape(Rectangle())
                         .onTapGesture { onOpenDetail?() }
@@ -85,6 +91,7 @@ struct RestaurantCardView: View {
                     CachedAsyncImage(url: urls[0]) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
+                        case .failure: noPhotoPlaceholder
                         default: Color(.systemGray5)
                         }
                     }
@@ -100,6 +107,7 @@ struct RestaurantCardView: View {
                     CachedAsyncImage(url: urls[photoIndex % urls.count]) { phase in
                         switch phase {
                         case .success(let img): img.resizable().scaledToFill()
+                        case .failure: noPhotoPlaceholder
                         default: Color(.systemGray5)
                         }
                     }
