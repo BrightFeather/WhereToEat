@@ -74,7 +74,10 @@ The rail uses the same filter set as This week's picks: reserved, blocked, seen-
 ### Flow ✅
 
 1. **Card on Home** (visual pass, 2026-11-27, Option A recommended):
-   - Deep indigo card (~150 pt tall, 20 pt corners) so it stands out from the cream page; the only dark surface on Home.
+   - **Color (rev 4, 2026-11-27 — indigo dropped, it didn't match the app):** palette comes from the existing tokens: cream `homeBgMid` #FFF0D9, peach `detailBgTop` #FFDBB5, `CuisineChip.boldOrange` #FA7A1A, `orangeText` #BF610D, `cardBorder` sienna hairline.
+     - **A · Sunset (recommended):** diagonal gradient #FFA94D → #FA7A1A → #E8590C, 20 pt corners. White title, cream caption. Unselected chips white @22% with white text; selected chip solid white with #BF610D text. Roll button deep cocoa #3A1F0F with cream text. Dark mode: same gradient (orange reads fine on the cocoa page).
+     - **B · Peach card:** #FFDBB5 → #FFF1DD wash + `cardBorder`, cocoa title, chips reuse Discovery's `CuisineChip` look (white/orange text → solid orange), orange Roll button. Most consistent, quietest.
+     - **C · Cocoa:** solid #3A1F0F, cream text, #5A3520 chips, orange selected, cream Roll button. Nearly invisible on the dark-mode page.
    - Right side: a fan of three tilted photo cards (real thumbnails from the candidate pool, the front one face-down with a "?").
    - Left: small caption "I'm feeling lucky", big title "Can't decide?".
    - **Inline pickers on the card (user, 2026-11-27; replaces the craving sheet):**
@@ -82,9 +85,8 @@ The rail uses the same filter set as This week's picks: reserved, blocked, seen-
      - **WHERE** row: horizontal-scroll chips, single select. `Near me` (only when GPS is inside the selected city), then the city's regions (NYC boroughs / Bay regions, same canonical list as Discovery), then `All of NYC` / `All of Bay Area`.
      - A region chip with 0 matches for the chosen cuisine renders dimmed but stays tappable.
      - Selection persists in UserDefaults (per city) until changed. First-run defaults: inferred cuisine (else `Surprise me`) + `Near me` (else `All of <city>`).
-   - Amber pill button "🎲 Roll the dice" + "N spots · 3 rolls left". The count updates live as chips change. With 0 matches the button turns into "Widen to all of <city>", which switches WHERE to the whole city. Only the button rolls; chip taps never roll.
+   - Pill button "🎲 Roll the dice" + "N spots · 3 rolls left". The count updates live as chips change. With 0 matches the button turns into "Widen to all of <city>", which switches WHERE to the whole city. Only the button rolls; chip taps never roll.
    - The fan shuffles in place for the first ~0.6 s (photos swap and jiggle), then the full-screen result takes over.
-   - Option B (alternative): a light amber "scratch-off ticket" with a dashed border, a dice tile that flips to the result photo, and a "Reveal my spot" button. Calmer, but blends in with the cream page.
 2. **Roll animation** (~1.2 s): a full-screen cover shuffles 5–6 candidate photos like a slot machine, slowing down, then lands. Light haptic on each tick, success haptic on land.
 3. **Result card**: big photo, name, `Japanese · East Village · 0.6 mi`, rating, top quote, and **Book this one** (opens the existing detail / booking flow) plus **Roll again** (max 2 re-rolls per day; on the 3rd tap: "That's your lucky three for today — swipe the deck for more").
 
