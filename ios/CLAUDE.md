@@ -23,7 +23,7 @@ ios/WhereToEat/
     ├── Reservation/ # Confirm + success screens for the booking state machine
     ├── Bookings/    # My Bookings (upcoming + past)
     ├── CustomList/  # My List (paste-link import + bookmarked rows)
-    ├── Auth/        # LoginView (Apple + guest; Google deprioritised to P2)
+    ├── Auth/        # LoginView (Apple + Google + guest)
     ├── Onboarding/  # WelcomeView (currently bypassed)
     ├── Settings/    # Profile, dietary tags, sources, sign-out
     └── Shared/      # Cross-tab UI primitives
@@ -98,7 +98,7 @@ Mappable filter: rows without `latitude`/`longitude` (typically those that never
 
 ### Auth gating
 
-`AuthService.signedIn` drives whether `LoginView` is presented. Today: **Apple Sign-In code + backend ship**, but the entitlement is commented out in `WhereToEat.entitlements` until the Developer Portal capability is enabled. **Google Sign-In is deprioritised to P2** — `googleButton` and `runGoogleSignIn` stay in `LoginView.swift` (unreferenced) so re-enabling is a one-line uncomment. Until either ships, every device gets a Keychain UUID via `IdentityService`, attached as `X-User-Id` on every backend request.
+`AuthService.state` (plus `@AppStorage("auth_gate_dismissed")`) drives whether `LoginView` is presented. **Apple** (native) and **Google** (`GoogleSignIn` SPM, `GoogleSignInIntegration.swift`) both hand an id token to `AuthService`, which exchanges it at `POST /api/auth/login`. Google config lives in `WhereToEat/WhereToEat/Info.plist` (`GIDClientID` + reversed-client-id URL scheme), merged into the generated plist via `INFOPLIST_FILE`; the redirect is forwarded by `.onOpenURL` in `WhereToEatApp`. Guests keep a Keychain UUID via `IdentityService`, attached as `X-User-Id` on every backend request.
 
 ### APIClient base URL resolution order
 
@@ -122,8 +122,8 @@ Localhost is **never** the default — a physical iPhone's loopback can't reach 
 
 - `SDKROOT = iphoneos`, `TARGETED_DEVICE_FAMILY = "1,2"`, `IPHONEOS_DEPLOYMENT_TARGET = 17.0`
 - `SWIFT_INSTALL_OBJC_HEADER = NO` (silences a build warning)
-- Location usage strings set via `INFOPLIST_KEY_NSLocation*` build settings (no separate Info.plist)
-- `WhereToEat.entitlements` has macOS sandbox keys cleared; `applesignin` is commented until the Developer Portal capability is flipped on
+- Location usage strings set via `INFOPLIST_KEY_NSLocation*` build settings. `WhereToEat/WhereToEat/Info.plist` holds only keys build settings can't express (Google `GIDClientID` + `CFBundleURLTypes`); it is merged with the generated plist and must not be added to Copy Bundle Resources
+- `WhereToEat.entitlements` has macOS sandbox keys cleared; `applesignin` is on in both Debug and Release entitlements
 
 ## Common gotchas
 

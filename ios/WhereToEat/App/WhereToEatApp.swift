@@ -37,6 +37,8 @@ struct WhereToEatApp: App {
                 .environment(\.managedObjectContext, persistence.context)
                 .environmentObject(locationService)
                 .environmentObject(notificationService)
+                // Google Sign-In's OAuth redirect (reversed-client-id scheme).
+                .onOpenURL { url in GoogleSignInIntegration.handle(url) }
         }
     }
 }

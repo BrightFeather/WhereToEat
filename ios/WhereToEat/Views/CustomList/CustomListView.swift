@@ -74,7 +74,10 @@ struct CustomListView: View {
         .sheet(isPresented: $viewModel.showXhsImportPreview) {
             XHSImportPreviewView(drafts: viewModel.importDrafts, viewModel: viewModel)
         }
-        .onOpenURL { _ in
+        .onOpenURL { url in
+            // Google Sign-In's OAuth redirect is handled app-wide in
+            // WhereToEatApp — not a share-sheet import.
+            if url.scheme?.hasPrefix("com.googleusercontent.apps.") == true { return }
             // Share-sheet incoming URL — paste-link import is currently
             // disabled (see AddRestaurantView). Surface the same alert so
             // the user knows what happened instead of silently dropping the

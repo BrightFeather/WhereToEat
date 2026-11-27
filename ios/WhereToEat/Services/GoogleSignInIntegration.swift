@@ -1,44 +1,43 @@
 import Foundation
 import UIKit
+import GoogleSignIn
 
-/// Thin seam where the real GoogleSignIn SDK will plug in.
+/// Thin wrapper around the GoogleSignIn SDK so `AuthService` stays SDK-agnostic.
 ///
-/// To finish the wiring:
-///
-///  1. In Google Cloud Console → APIs & Services → Credentials, create an
-///     **iOS OAuth client ID** for bundle id `com.wheretoeat.app`. Copy the
-///     client id (…`.apps.googleusercontent.com`) *and* the reversed client id.
-///
-///  2. Add the GoogleSignIn-iOS package via SPM:
-///        File → Add Package Dependencies
-///        URL: https://github.com/google/GoogleSignIn-iOS
-///        Products: GoogleSignIn, GoogleSignInSwift
-///
-///  3. In the app target's Info tab add a URL Type whose URL Schemes is the
-///     reversed client id (e.g. `com.googleusercontent.apps.123456-abc…`).
-///
-///  4. Set env var `GOOGLE_IOS_CLIENT_IDS=<client-id>` in `backend/.env.local`
-///     (comma-separate if you have more than one). This is what the backend
-///     checks the identity token's `aud` against.
-///
-///  5. Replace the `#error` below with the SDK call shown in the comment.
+/// Configuration lives in `WhereToEat/WhereToEat/Info.plist` (merged into the
+/// generated plist):
+///   - `GIDClientID` — the iOS OAuth client id from Google Cloud Console.
+///   - `CFBundleURLTypes` — the *reversed* client id as a URL scheme, so
+///     Google's OAuth redirect lands back in the app (handled by
+///     `.onOpenURL` in `WhereToEatApp`).
+/// The backend verifies the token's `aud` against `GOOGLE_IOS_CLIENT_IDS`
+/// (Vercel env), which must contain the same client id.
 enum GoogleSignInIntegration {
     /// Presents Google's OAuth consent screen and returns the identity token.
-    /// Wired by the UI layer to `AuthService.completeGoogleSignIn`.
+    @MainActor
     static func signIn(presenting: UIViewController) async throws -> (idToken: String, displayName: String?) {
-        // === Replace the two lines below with the real call once the SDK is added: ===
-        //
-        // import GoogleSignIn
-        // let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenting)
-        // guard let token = result.user.idToken?.tokenString else { throw AuthError.missingToken }
-        // let name = result.user.profile?.name
-        // return (token, name)
-        //
-        // ==========================================================================
-        throw NSError(
-            domain: "WhereToEat.GoogleSignIn",
-            code: -1,
-            userInfo: [NSLocalizedDescriptionKey: "Google Sign-In SDK not yet integrated. See GoogleSignInIntegration.swift for setup steps."]
-        )
+        let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenting)
+        guard let token = result.user.idToken?.tokenString else {
+            throw AuthError.missingGoogleToken
+        }
+        return (token, result.user.profile?.name)
+    }
+
+    /// Forwards the OAuth redirect URL to the SDK. Returns `true` if handled.
+    @discardableResult
+    static func handle(_ url: URL) -> Bool {
+        GIDSignIn.sharedInstance.handle(url)
+    }
+
+    /// Drops the SDK's cached Google session so the next sign-in shows the
+    /// account picker instead of silently reusing the previous account.
+    static func signOut() {
+        GIDSignIn.sharedInstance.signOut()
+    }
+
+    /// True when the user cancelled the Google sheet — not worth an error banner.
+    static func isCancellation(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return ns.domain == kGIDSignInErrorDomain && ns.code == GIDSignInError.canceled.rawValue
     }
 }
