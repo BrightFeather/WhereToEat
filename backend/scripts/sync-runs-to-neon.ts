@@ -16,8 +16,9 @@
  *      every column. Existing rows get the pipeline-owned fields from local
  *      (mention_count, total_likes, post_created_at, pipeline_run_id,
  *      updated_at, fresh Google rating). Everything else keeps Neon's value
- *      and is filled from local only when empty. Never touched:
- *      is_available_this_week, resy / opentable fields, Blob-mirrored photo_url.
+ *      and is filled from local only when empty. Never touched on existing
+ *      rows: is_available_this_week, resy / opentable fields, photo_url /
+ *      photo_urls (prod-owned; run `npm run mirror-photos` after syncing new rows).
  *   3. xhs_sources for those restaurants: insert, skip existing.
  * Idempotent — safe to re-run.
  */
@@ -102,9 +103,10 @@ async function main() {
           latitude      = COALESCE(xhs_restaurants.latitude, EXCLUDED.latitude),
           longitude     = COALESCE(xhs_restaurants.longitude, EXCLUDED.longitude),
           price_level   = COALESCE(xhs_restaurants.price_level, EXCLUDED.price_level),
-          website_url   = COALESCE(xhs_restaurants.website_url, EXCLUDED.website_url),
-          photo_url     = COALESCE(xhs_restaurants.photo_url, EXCLUDED.photo_url),
-          photo_urls    = COALESCE(xhs_restaurants.photo_urls, EXCLUDED.photo_urls)`;
+          website_url   = COALESCE(xhs_restaurants.website_url, EXCLUDED.website_url)`;
+      // photo_url / photo_urls deliberately absent: prod owns photos. mirror-photos
+      // moves them to Blob and NULLs dead ones on purpose; filling them from local
+      // would bring back expired Places URLs (with the API key) for those rows.
       if (++n % 50 === 0) console.log(`  restaurants ${n}/${restos.length}`);
     }
 
