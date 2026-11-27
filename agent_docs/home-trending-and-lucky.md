@@ -19,18 +19,18 @@ No upcoming reservations yet.
 This week's picks            ← unchanged (3 slots / 1 with a booking)
   TOP PICK · NEW THIS WEEK · HIDDEN GEM
 
-🎲 I'm feeling lucky          ← NEW: one full-width card
-   "Japanese near you — tap to roll"
-
 Trending now 🔥              ← NEW: horizontal rail, 6–8 cards
   [photo] [photo] [photo] →
   Name · 2.3k likes · 4d ago
 
-[Swipe through all N picks →]
 🍽 N picks   📍 N saved
+
+🎲 I'm feeling lucky          ← NEW: last thing on Home
 ```
 
-Why this order: picks stay the first thing you see. Lucky is a single action, so it sits between the two lists rather than at the bottom. Trending is browsable, so it's a rail that adds about 200 pt of height, not 3 more full-width cards. That keeps Home to roughly one and a half screens.
+**Removed (user, 2026-11-27):** the "Swipe through all N picks →" gradient button (`findAnotherRestaurantButton`). The deck stays one tap away through the Pick tab and the `🍽 N picks` stat, which already posts `.switchToPick`.
+
+**Lucky at the bottom (user, 2026-11-27):** picks and Trending are what you browse; Lucky is the "still can't decide" exit at the end of the page. Trending is a rail (about 200 pt), so Home stays roughly one and a half screens.
 
 ## 1. Trending now
 
@@ -73,7 +73,13 @@ The rail uses the same filter set as This week's picks: reserved, blocked, seen-
 
 ### Flow ✅
 
-1. **Card on Home**: dice icon, "I'm feeling lucky", subline = current inputs ("Japanese · near you", or "Anything · Manhattan"). Tap the card → roll immediately (one tap, as asked). Tap the small "Change" link → the craving sheet.
+1. **Card on Home** (visual pass, 2026-11-27, Option A recommended):
+   - Deep indigo card (~150 pt tall, 20 pt corners) so it stands out from the cream page; the only dark surface on Home.
+   - Right side: a fan of three tilted photo cards (real thumbnails from the candidate pool, the front one face-down with a "?").
+   - Left: small caption "I'm feeling lucky", big title "Can't decide?", then two input chips: cuisine (`Japanese`) and place (`Near you` / `Manhattan`). Each chip opens the craving sheet at that section, replacing the separate "Change" link.
+   - Amber pill button "🎲 Roll the dice" + "3 rolls left today". Tapping the button (or anywhere on the card outside the chips) rolls immediately.
+   - The fan shuffles in place for the first ~0.6 s (photos swap and jiggle), then the full-screen result takes over.
+   - Option B (alternative): a light amber "scratch-off ticket" with a dashed border, a dice tile that flips to the result photo, and a "Reveal my spot" button. Calmer, but blends in with the cream page.
 2. **Roll animation** (~1.2 s): a full-screen cover shuffles 5–6 candidate photos like a slot machine, slowing down, then lands. Light haptic on each tick, success haptic on land.
 3. **Result card**: big photo, name, `Japanese · East Village · 0.6 mi`, rating, top quote, and **Book this one** (opens the existing detail / booking flow) plus **Roll again** (max 2 re-rolls per day; on the 3rd tap: "That's your lucky three for today — swipe the deck for more").
 
