@@ -663,6 +663,7 @@ struct DiscoveryContainerView: View {
     @ObservedObject var viewModel: DiscoveryViewModel
     @EnvironmentObject private var customListVM: CustomListViewModel
     @ObservedObject private var weekly = WeeklyRestaurantService.shared
+    @State private var showCityPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -769,31 +770,104 @@ struct DiscoveryContainerView: View {
         }
     }
 
-    /// Top-left city switcher (NYC / Bay Area). Half-transparent at rest so it
-    /// doesn't compete with the "This week" title; the whole app (Home, Pick,
-    /// Find) follows the choice. Defaults to NYC.
+    /// Top-left city switcher. A compact chip, half-transparent at rest so it
+    /// doesn't compete with the "This week" title, that opens a styled
+    /// popover card (`CityPickerCard`). The whole app (Home, Pick, Find)
+    /// follows the choice. Defaults to New York.
     private var cityPicker: some View {
         let label = WeeklyRestaurantService.cities.first { $0.key == weekly.activeCity }?.label ?? "New York"
-        return Menu {
-            Picker("City", selection: Binding(
-                get: { weekly.activeCity },
-                set: { weekly.selectCity($0) }
-            )) {
-                ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
-                    Text(city.label).tag(city.key)
+        return Button { showCityPicker = true } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                Text(label)
+                    .font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+            }
+            .foregroundColor(.primary)
+            .opacity(showCityPicker ? 1 : 0.5)
+            .animation(.easeOut(duration: 0.15), value: showCityPicker)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("City: \(label). Double-tap to change.")
+        .popover(isPresented: $showCityPicker, arrowEdge: .top) {
+            CityPickerCard(selected: weekly.activeCity) { key in
+                weekly.selectCity(key)
+                showCityPicker = false
+            }
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
+// MARK: - City picker card (Pick-page popover)
+
+/// Popover content for the Pick-page city switcher: a compact row per city
+/// with a landmark emoji tile (🗽 / 🌉), name, short subtitle and a check on
+/// the current city.
+private struct CityPickerCard: View {
+    let selected: String
+    let onSelect: (String) -> Void
+
+    private struct CityStyle {
+        let emoji: String
+        let subtitle: String
+        let tint: Color
+    }
+
+    private static let styles: [String: CityStyle] = [
+        "nyc": CityStyle(emoji: "🗽", subtitle: "5 boroughs", tint: Color(red: 0.95, green: 0.45, blue: 0.20)),
+        "bay": CityStyle(emoji: "🌉", subtitle: "SF & the Bay", tint: Color(red: 0.25, green: 0.50, blue: 0.95)),
+    ]
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
+                row(key: city.key, label: city.label)
+            }
+        }
+        .padding(6)
+        .frame(width: 220)
+    }
+
+    private func row(key: String, label: String) -> some View {
+        let style = Self.styles[key] ?? CityStyle(emoji: "📍", subtitle: "", tint: .gray)
+        let isSelected = key == selected
+        return Button { onSelect(key) } label: {
+            HStack(spacing: 10) {
+                Text(style.emoji)
+                    .font(.system(size: 20))
+                    .frame(width: 34, height: 34)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(style.tint.opacity(0.15))
+                    )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.primary)
+                    Text(style.subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 6)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(style.tint)
                 }
             }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "mappin.and.ellipse")
-                Text(label).fontWeight(.semibold)
-                Image(systemName: "chevron.down").font(.caption2.weight(.bold))
-            }
-            .font(.subheadline)
-            .foregroundColor(.primary)
-            .opacity(0.5)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isSelected ? style.tint.opacity(0.08) : Color.clear)
+            )
+            .contentShape(Rectangle())
         }
-        .accessibilityLabel("City: \(label)")
+        .buttonStyle(.plain)
+        .accessibilityLabel(label + (isSelected ? ", selected" : ""))
     }
 }
 

@@ -27,6 +27,9 @@ struct FindView: View {
     /// location every time the tab is re-entered. Subsequent visits respect
     /// whatever camera the user left behind.
     @State private var didApplyInitialCenter: Bool = false
+    /// True until the map has been framed for the current city (fit to its
+    /// restaurants, or centered on the user). Set again on every city switch.
+    @State private var cityFitPending: Bool = true
 
     /// Initial span when centering on the user — covers ~1 mile in each
     /// direction, which gives ~10–30 visible pins in dense NYC and reads as
@@ -49,6 +52,49 @@ struct FindView: View {
 
     private static func cityRegion(_ key: String) -> MKCoordinateRegion {
         key == "bay" ? bayRegion : nycRegion
+    }
+
+    /// Plausibility box per city (matches backend CITY_META bounds for `bay`).
+    /// Coordinates outside it, e.g. a mis-geocoded row, are ignored when fitting.
+    private static let cityBounds: [String: (minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)] = [
+        "nyc": (40.45, 41.0, -74.3, -73.65),
+        "bay": (36.95, 38.65, -123.15, -121.45),
+    ]
+
+    /// Region framing every restaurant of `key` inside its plausibility box,
+    /// with a 15% margin. Nil when fewer than two qualify (caller keeps the
+    /// fixed city region).
+    private func fittedRegion(for key: String) -> MKCoordinateRegion? {
+        guard let b = Self.cityBounds[key] else { return nil }
+        let coords = viewModel.allRestaurants.compactMap { r -> (Double, Double)? in
+            guard let lat = r.latitude, let lng = r.longitude,
+                  lat >= b.minLat, lat <= b.maxLat, lng >= b.minLng, lng <= b.maxLng else { return nil }
+            return (lat, lng)
+        }
+        guard coords.count >= 2 else { return nil }
+        let lats = coords.map(\.0), lngs = coords.map(\.1)
+        let (minLat, maxLat, minLng, maxLng) = (lats.min()!, lats.max()!, lngs.min()!, lngs.max()!)
+        // The map is full-screen but the bottom panel covers `panelFraction`
+        // of it, so fit the pins into the visible top part: stretch the
+        // latitude span by 1/(1 - panel) and anchor the pins' top edge.
+        let visible = max(0.3, 1 - panelFraction)
+        let pinsLatSpan = max((maxLat - minLat) * 1.15, 0.02)
+        let latSpan = pinsLatSpan / visible
+        let topLat = maxLat + (pinsLatSpan - (maxLat - minLat)) / 2
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: topLat - latSpan / 2, longitude: (minLng + maxLng) / 2),
+            span: MKCoordinateSpan(latitudeDelta: latSpan,
+                                   longitudeDelta: max((maxLng - minLng) * 1.15, 0.02))
+        )
+    }
+
+    /// Frame the selected city's restaurants once their list has loaded.
+    /// No-op once the user has been centered or the city has already been fit.
+    private func fitToCityIfPending() {
+        guard cityFitPending, let region = fittedRegion(for: weekly.activeCity) else { return }
+        withAnimation(.easeInOut(duration: 0.35)) { cameraPosition = .region(region) }
+        viewModel.visibleRegion = region
+        cityFitPending = false
     }
 
     private static func region(_ r: MKCoordinateRegion, contains c: CLLocationCoordinate2D) -> Bool {
@@ -103,12 +149,16 @@ struct FindView: View {
         .onChange(of: locationService.currentLocation != nil) { _, hasFix in
             if hasFix { applyInitialCenterIfNeeded() }
         }
-        // Pick-page city switch → show the new city on the map.
+        // Pick-page city switch → show the new city (fixed frame now, then
+        // fit to its restaurants once the new list lands).
         .onChange(of: weekly.activeCity) { _, key in
             let region = Self.cityRegion(key)
             withAnimation(.easeInOut(duration: 0.35)) { cameraPosition = .region(region) }
             viewModel.visibleRegion = region
+            cityFitPending = true
+            fitToCityIfPending()
         }
+        .onChange(of: viewModel.allRestaurants.count) { _, _ in fitToCityIfPending() }
     }
 
     /// Center on the user's current location with a tight "nearby" span the
@@ -124,13 +174,18 @@ struct FindView: View {
         }
         guard !didApplyInitialCenter else { return }
         // Only zoom to the user when they're inside the selected city;
-        // otherwise (e.g. in NYC browsing Bay Area) stay on the city view.
+        // otherwise (e.g. in NYC browsing Bay Area) frame all of the city's
+        // restaurants so none sit off-screen.
         guard let userCoord = locationService.currentLocation,
-              Self.region(cityRegion, contains: userCoord) else { return }
+              Self.region(cityRegion, contains: userCoord) else {
+            fitToCityIfPending()
+            return
+        }
         let region = MKCoordinateRegion(center: userCoord, span: Self.initialNearbySpan)
         cameraPosition = .region(region)
         viewModel.visibleRegion = region
         didApplyInitialCenter = true
+        cityFitPending = false
     }
 
     // MARK: - Map layer

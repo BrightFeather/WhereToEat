@@ -90,6 +90,13 @@ Audit of `xhsScraper.ts` → `llmExtractor.ts` → `placesEnricher.ts` → `rest
 | NYC-INGEST-2 | Note: the NYC deck is all available rows, not just this run | ℹ️ Superseded by LAT-3 (2026-11-26). Briefly, after the `NULLS LAST` deploy, `weekly.ts` served only this run's 162 rows. It now serves every available NYC row (684), and the latest run decides only ready vs stale. |
 | NYC-INGEST-3 | Sync to Neon + deploy | ✅ 2026-11-26 (see BA-P1-4). **Incident:** prod `/api/restaurants/weekly` returned 500 for ~3 min (about 20:54–20:57 local). The first deploy snapshot picked up another session's half-finished `weekly.ts` rewrite (`ReferenceError: latestCompleted`). Fixed by redeploying HEAD's `weekly.ts` plus only this session's hunks. That session's rewrite is still undeployed in the working tree. |
 
+### Find framing + city picker polish — 2026-11-26
+
+| # | Task | Status |
+|---|------|--------|
+| FIND-FIT-1 | "Get geo info so Bay restaurants show on Find" | ✅ No geo was missing: all 133 served Bay rows already have lat/lng in prod. The problem was framing. Find lists only pins inside the camera, and the fixed Bay region cut off 6 (four in San Jose, Pleasanton, San Rafael). `FindView.fittedRegion` now fits the selected city's restaurants (coordinates outside a per-city plausibility box are ignored, so a mis-geocoded row can't zoom out to the world) and stretches the latitude span so pins sit above the 45% bottom panel. It runs on first appear (when the user isn't inside the city) and after each city switch once the list loads. Verified in the simulator: Bay Area → "133 restaurants", San Rafael → San Jose framed. |
+| PICKER-2 | "Make the city picker prettier", then "too big, pick a better city photo" | ✅ The system `Menu` was replaced by a compact popover card (`CityPickerCard`, 220pt): 🗽 New York · 5 boroughs / 🌉 Bay Area · SF & the Bay on soft tinted tiles, with a tinted row + check on the current city. The trigger is a chip (pin + name + chevron), 50% opacity at rest. Landmark emoji instead of photos: no asset downloads or licensing. Real skyline photos (e.g. Unsplash) are possible if wanted, but need the owner's OK to download. In TestFlight build 36. |
+
 ### Website booking fallback + OpenTable source research — 2026-11-26
 
 | # | Task | Status |
