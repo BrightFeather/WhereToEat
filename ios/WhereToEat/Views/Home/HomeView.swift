@@ -159,6 +159,7 @@ struct HomeView: View {
                     LuckyCard(viewModel: viewModel) {
                         luckyResult = viewModel.rollLucky()
                     }
+                    .brightCard()
                     .padding(.horizontal)
                 }
             }
@@ -201,7 +202,7 @@ struct HomeView: View {
                 HStack(spacing: 12) {
                     ForEach(picks) { pick in
                         NavigationLink(destination: detailDestination(for: pick.restaurant)) {
-                            TrendingCard(pick: pick)
+                            TrendingCard(pick: pick).brightCard()
                         }
                         .buttonStyle(.plain)
                     }
@@ -230,7 +231,7 @@ struct HomeView: View {
             VStack(spacing: 12) {
                 ForEach(viewModel.homePicks) { pick in
                     NavigationLink(destination: detailDestination(for: pick.restaurant)) {
-                        HomePickCard(pick: pick)
+                        HomePickCard(pick: pick).brightCard()
                     }
                     .buttonStyle(.plain)
                 }
@@ -265,6 +266,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
         }
+        .brightCard()
         .padding(.horizontal)
     }
 
@@ -277,10 +279,16 @@ struct HomeView: View {
     private static func configureTabBarAppearance() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // charcoal #161210
-                : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
+        // Cream in both themes: dark mode darkens only the page, the tab bar
+        // stays bright. Unselected items get a fixed gray so they don't turn
+        // light-on-cream in dark mode.
+        appearance.backgroundColor = UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
+        let itemGray = UIColor(red: 0.56, green: 0.56, blue: 0.58, alpha: 1.0)   // #8E8E93
+        for layout in [appearance.stackedLayoutAppearance,
+                       appearance.inlineLayoutAppearance,
+                       appearance.compactInlineLayoutAppearance] {
+            layout.normal.iconColor = itemGray
+            layout.normal.titleTextAttributes = [.foregroundColor: itemGray]
         }
         appearance.shadowColor = .clear   // drop the default 1pt top hairline
         UITabBar.appearance().standardAppearance = appearance
@@ -392,6 +400,13 @@ extension Color {
             ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
             : UIColor.systemGray6.resolvedColor(with: trait)
     })
+}
+
+extension View {
+    /// Dark theme = dark page, bright cards (user, 2026-11-27): cards, chips
+    /// and buttons keep the light palette, including their text colors, while
+    /// the page behind them goes charcoal.
+    func brightCard() -> some View { environment(\.colorScheme, .light) }
 }
 
 /// Shared warm wash used as the background on Home and My List. Flat fill of
@@ -757,6 +772,7 @@ struct DiscoveryContainerView: View {
                     ))
                 }
             }
+            .brightCard()
             .padding(.top, 3)
             .padding(.bottom, 14)
             .frame(maxWidth: .infinity)

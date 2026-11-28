@@ -227,6 +227,7 @@ struct CardDeckView: View {
                     )
             }
             .buttonStyle(PressFeedbackButtonStyle())
+            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Reset seen and disliked restaurants")
 
             Text("reset")
@@ -265,6 +266,7 @@ struct CardDeckView: View {
             }
             .disabled(!viewModel.canUndo)
             .buttonStyle(PressFeedbackButtonStyle())
+            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Undo last swipe")
 
             Text("undo")
@@ -298,6 +300,7 @@ struct CardDeckView: View {
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             }
             .buttonStyle(PressFeedbackButtonStyle())
+            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Pass")
 
             Text("pass")
@@ -326,6 +329,7 @@ struct CardDeckView: View {
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             }
             .buttonStyle(PressFeedbackButtonStyle())
+            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Like")
 
             Text("like")
@@ -364,6 +368,7 @@ struct CardDeckView: View {
                     .scaleEffect(bookmarkScale)
             }
             .buttonStyle(PressFeedbackButtonStyle())
+            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Save to My List")
 
             Text("save")

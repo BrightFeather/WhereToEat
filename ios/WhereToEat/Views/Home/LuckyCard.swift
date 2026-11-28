@@ -1,14 +1,12 @@
 import SwiftUI
 
 /// "I'm feeling lucky" — last card on Home. Peach card palette: the detail
-/// page's peach → cream wash in light mode, warm charcoal in dark mode, with
+/// page's peach → cream wash, kept bright in dark mode too, with
 /// Discovery's orange chip style. CRAVING / WHERE chip rows pick the inputs;
 /// only the button rolls.
 struct LuckyCard: View {
     @ObservedObject var viewModel: HomeViewModel
     let onRoll: () -> Void
-
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let match = viewModel.luckyMatch
@@ -75,7 +73,7 @@ struct LuckyCard: View {
             RoundedRectangle(cornerRadius: 20).strokeBorder(palette.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 10, y: 3)
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
     }
 
     // MARK: - Pieces
@@ -227,26 +225,18 @@ struct LuckyCard: View {
         let fanEdge: Color
     }
 
+    /// Always the light Peach palette: Home renders this card with
+    /// `.brightCard()`, so it stays bright on the dark-mode page.
     private var palette: Palette {
-        scheme == .dark
-            ? Palette(   // Warm charcoal dark theme (DARK-1)
-                background: [Color(rgb: 0x2A201A), Color(rgb: 0x241C17)],
-                border: Color(rgb: 0xFF8A3D, opacity: 0.25),
-                caption: Color(rgb: 0xFF8A3D),
-                title: Color(rgb: 0xF4EADF),
-                rowLabel: Color(rgb: 0xA6998B),
-                chipFill: Color(rgb: 0x3A2E26),
-                chipText: Color(rgb: 0xFFC79A),
-                fanEdge: Color(rgb: 0xF4EADF))
-            : Palette(
-                background: [Color(rgb: 0xFFDBB5), Color(rgb: 0xFFF1DD)],
-                border: Color(red: 0.62, green: 0.42, blue: 0.18, opacity: 0.28),
-                caption: Color(rgb: 0xBF610D),
-                title: Color(rgb: 0x3A1F0F),
-                rowLabel: Color(rgb: 0x9E6B2E),
-                chipFill: .white,
-                chipText: Color(rgb: 0xBF610D),
-                fanEdge: .white)
+        Palette(
+            background: [Color(rgb: 0xFFDBB5), Color(rgb: 0xFFF1DD)],
+            border: Color(red: 0.62, green: 0.42, blue: 0.18, opacity: 0.28),
+            caption: Color(rgb: 0xBF610D),
+            title: Color(rgb: 0x3A1F0F),
+            rowLabel: Color(rgb: 0x9E6B2E),
+            chipFill: .white,
+            chipText: Color(rgb: 0xBF610D),
+            fanEdge: .white)
     }
 }
 

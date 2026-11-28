@@ -101,7 +101,7 @@ struct FindView: View {
                 mapLayer
 
                 VStack(spacing: 8) {
-                    cuisineChipRow
+                    cuisineChipRow.brightCard()
                     if shouldShowNoCoordsBanner {
                         noCoordsBanner
                             .padding(.horizontal, 16)
