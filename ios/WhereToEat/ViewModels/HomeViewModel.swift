@@ -45,13 +45,19 @@ final class HomeViewModel: ObservableObject {
     /// the Discovery deck uses). Fetched on init; silent failure is OK —
     /// worst case the user sees a restaurant they've already booked at the
     /// top, which the Reservations row directly above them will disambiguate.
-    @Published private var remoteReservedIds: Set<UUID> = []
-    @Published private var remoteBlockedIds: Set<UUID> = []
+    @Published private var remoteReservedIds: Set<UUID> = [] {
+        didSet { recomputeDerived() }
+    }
+    @Published private var remoteBlockedIds: Set<UUID> = [] {
+        didSet { recomputeDerived() }
+    }
 
     /// Restaurants whose Home photo came back as an HTTP error or a
     /// non-image. They're left out of the pick slots so Home never shows a
     /// gray placeholder tile. See `verifyPickPhotos()`.
-    @Published private var deadPhotoIds: Set<String> = []
+    @Published private var deadPhotoIds: Set<String> = [] {
+        didSet { recomputeDerived() }
+    }
     private var probedPhotoURLs: Set<URL> = []
     /// Stops the swap-and-recheck chain if photos fail wholesale (e.g. the
     /// Blob store was suspended on 2026-11-27): past this, Home keeps the
@@ -88,7 +94,10 @@ final class HomeViewModel: ObservableObject {
         // can land after the deck does.
         LocationService.shared.$currentLocation
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.nearMeAvailable = self.computeNearMeAvailable()
+            }
             .store(in: &cancellables)
         regionsService.$regions
             .receive(on: DispatchQueue.main)
@@ -161,10 +170,40 @@ final class HomeViewModel: ObservableObject {
     /// sessions. We scan UserDefaults directly since bookings can live in any
     /// week — e.g. a booking made today for next Saturday. Sorted by
     /// `datetime` ascending so the *next-up* reservation sits on top.
-    var upcomingReservations: [Reservation] {
-        WeeklySession.allReservations().filter {
-            $0.status == .confirmed && $0.datetime > Date()
-        }.sorted { $0.datetime < $1.datetime }
+    @Published private(set) var upcomingReservations: [Reservation] = []
+
+    // MARK: - Derived state (cached)
+
+    /// Everything Home's body reads that costs a pass over the 600+ row deck
+    /// or a UserDefaults decode is computed here once per input change, not
+    /// on every redraw. Before this, a single Home render rebuilt the picks
+    /// 3×, the Lucky pool ~6× and decoded every saved WeeklySession once per
+    /// cuisine chip.
+    ///
+    /// Inputs and who triggers a recompute: the deck, filters, swipe history,
+    /// seen-today and reservations → `applyFilter()` (data load, refresh,
+    /// pull-to-refresh, profile changes); server reserved / blocked ids and
+    /// dead photos → their `didSet`; My List → `savedRestaurants.didSet`;
+    /// GPS → the location sink; a roll → `rollLucky()`.
+    private var allReservationsCache: [Reservation] = []
+
+    @Published private(set) var homePicks: [HomePick] = []
+    @Published private(set) var trendingPicks: [TrendingPick] = []
+    @Published private(set) var nearMeAvailable: Bool = false
+    @Published private(set) var luckyInferredCuisine: String?
+    private var luckyBasePool: [WeeklyRestaurant] = []
+
+    private func recomputeDerived() {
+        allReservationsCache = WeeklySession.allReservations()
+        let now = Date()
+        upcomingReservations = allReservationsCache
+            .filter { $0.status == .confirmed && $0.datetime > now }
+            .sorted { $0.datetime < $1.datetime }
+        homePicks = computeHomePicks()          // reads upcomingReservations
+        trendingPicks = computeTrendingPicks()  // excludes homePicks
+        luckyBasePool = computeLuckyBasePool()
+        luckyInferredCuisine = computeLuckyInferredCuisine()
+        nearMeAvailable = computeNearMeAvailable()
     }
 
     var hasUpcomingReservations: Bool { !upcomingReservations.isEmpty }
@@ -239,7 +278,7 @@ final class HomeViewModel: ObservableObject {
     ///
     /// All slots share the Discovery deck's filter set: server-side reserved,
     /// server-side blocked, on-device seen-today, plus local swipe history.
-    var homePicks: [HomePick] {
+    private func computeHomePicks() -> [HomePick] {
         let seen = SeenService.shared.seenToday()
         let today = Date()
         let pool = allRestaurants.filter { r in
@@ -370,7 +409,7 @@ final class HomeViewModel: ObservableObject {
     /// widens to 60 / 90 until at least 4 qualify; otherwise the rail hides.
     /// At most 2 per cuisine and 1 per post. Same filters as the picks, minus
     /// restaurants already in This week's picks.
-    var trendingPicks: [TrendingPick] {
+    private func computeTrendingPicks() -> [TrendingPick] {
         let seen = SeenService.shared.seenToday()
         let today = Date()
         let dayKey = Self.dailyKey()
@@ -523,7 +562,9 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var luckyCuisine: String?
     @Published private(set) var luckyPlace: LuckyPlace = .wholeCity
     /// My List rows, pushed in from `HomeView` (CustomListViewModel lives there).
-    @Published var savedRestaurants: [Restaurant] = []
+    @Published var savedRestaurants: [Restaurant] = [] {
+        didSet { luckyInferredCuisine = computeLuckyInferredCuisine() }
+    }
     private var luckySelectionCity: String?
 
     static let luckyDailyRolls = 3
@@ -575,7 +616,7 @@ final class HomeViewModel: ObservableObject {
 
     /// "Near me" only makes sense when the phone is inside the city: some
     /// restaurant in the deck has to be within ~10 miles.
-    var nearMeAvailable: Bool {
+    private func computeNearMeAvailable() -> Bool {
         guard let me = userLocation else { return false }
         return allRestaurants.contains { r in
             Self.location(of: r).map { me.distance(from: $0) < 16_000 } ?? false
@@ -606,7 +647,7 @@ final class HomeViewModel: ObservableObject {
 
     /// Everything Lucky can land on before the cuisine / place chips: the
     /// shared filters, a working photo, and nothing already rolled today.
-    private var luckyBasePool: [WeeklyRestaurant] {
+    private func computeLuckyBasePool() -> [WeeklyRestaurant] {
         let seen = SeenService.shared.seenToday()
         let today = Date()
         let rolled = Set(luckyRolledToday)
@@ -711,7 +752,7 @@ final class HomeViewModel: ObservableObject {
     /// The user's usual cuisine: confirmed bookings weigh 3, My List saves 2,
     /// right-swipes in the last 30 days 1. Needs at least 2 signals, and the
     /// cuisine has to exist in the current city.
-    var luckyInferredCuisine: String? {
+    private func computeLuckyInferredCuisine() -> String? {
         let byId = Dictionary(allRestaurants.map { ($0.id.lowercased(), $0) },
                               uniquingKeysWith: { first, _ in first })
         var weights: [String: Int] = [:]
@@ -721,7 +762,7 @@ final class HomeViewModel: ObservableObject {
             weights[key, default: 0] += weight
             signals += 1
         }
-        for res in WeeklySession.allReservations() where res.status == .confirmed {
+        for res in allReservationsCache where res.status == .confirmed {
             add(byId[res.restaurantId.uuidString.lowercased()]?.cuisineType, 3)
         }
         for r in savedRestaurants {
@@ -767,6 +808,7 @@ final class HomeViewModel: ObservableObject {
         }
 
         UserDefaults.standard.set(luckyRolledToday + [chosen.id], forKey: luckyRolledKey)
+        luckyBasePool = computeLuckyBasePool()   // drop the rolled restaurant
         objectWillChange.send()
 
         let others = candidates.filter { $0.id != chosen.id }.shuffled().prefix(6)
@@ -1061,6 +1103,7 @@ final class HomeViewModel: ObservableObject {
         weeklyCount = filtered.count
         previewRestaurants = filtered
         previewPhotoURLs = filtered.prefix(6).compactMap { $0.photoUrl.flatMap { URL(string: $0) } }
+        recomputeDerived()
         // HIDDEN GEM is drawn from the mid-ranked slice, outside the top-25
         // photos WeeklyRestaurantService already warms; this also prefetches.
         verifyPickPhotos()
