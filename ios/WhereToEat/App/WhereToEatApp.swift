@@ -14,6 +14,43 @@ extension Notification.Name {
     static let userProfileUpdated = Notification.Name("userProfileUpdated")
 }
 
+/// Settings → Appearance. Defaults to Light; "Match system" follows iOS.
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case light, dark, system
+
+    static let storageKey = "app_appearance"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .light:  return "Light"
+        case .dark:   return "Dark"
+        case .system: return "Match system"
+        }
+    }
+
+    var interfaceStyle: UIUserInterfaceStyle {
+        switch self {
+        case .light:  return .light
+        case .dark:   return .dark
+        case .system: return .unspecified
+        }
+    }
+
+    /// Set on every window rather than via `.preferredColorScheme`, which
+    /// doesn't reliably switch back to "system" and doesn't reach UIKit
+    /// presentations like `SFSafariViewController`.
+    func apply() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = interfaceStyle
+            }
+        }
+    }
+}
+
 @main
 struct WhereToEatApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -44,6 +81,7 @@ struct WhereToEatApp: App {
 struct RootView: View {
     @AppStorage("has_seen_welcome")    private var hasSeenWelcome: Bool = false
     @AppStorage("auth_gate_dismissed") private var authGateDismissed: Bool = false
+    @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .light
     @StateObject private var auth = AuthService.shared
 
     /// Gate order:
@@ -74,6 +112,8 @@ struct RootView: View {
                 HomeView()
             }
         }
+        .onAppear { appearance.apply() }
+        .onChange(of: appearance) { _, new in new.apply() }
         .task {
             _ = IdentityService.shared.userId
             await ReservationService.shared.syncFromServer()

@@ -5,10 +5,20 @@ struct SettingsView: View {
     @ObservedObject private var auth = AuthService.shared
     @AppStorage("auth_gate_dismissed") private var authGateDismissed: Bool = false
     @EnvironmentObject private var locationService: LocationService
+    @ObservedObject private var weekly = WeeklyRestaurantService.shared
+    @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .light
 
     var body: some View {
         Form {
-            Section("Location") {
+            Section {
+                cityRow(key: nil, label: "Current location",
+                        subtitle: weekly.gpsCity.flatMap(Self.cityLabel).map { "Near \($0)" }
+                            ?? "Not near a supported city · New York")
+                ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
+                    cityRow(key: city.key, label: city.label, subtitle: Self.citySubtitles[city.key] ?? "")
+                }
+                // Free-form overrides from older builds still steer the GPS
+                // coordinates; let the user clear one.
                 if let override = viewModel.profile.locationOverride {
                     HStack {
                         Label(override.name, systemImage: "mappin.circle.fill")
@@ -16,25 +26,23 @@ struct SettingsView: View {
                         Button("Clear") { viewModel.clearCityOverride() }
                             .foregroundColor(.red)
                     }
-                } else {
-                    HStack {
-                        Label("Using current location", systemImage: "location.fill")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        if locationService.currentLocation != nil {
-                            Text(locationService.currentCity.isEmpty ? "Locating…" : locationService.currentCity)
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                        } else {
-                            Text(locationService.authorizationStatus == .denied ? "Access denied" : "Locating…")
-                                .font(.subheadline)
-                                .foregroundColor(locationService.authorizationStatus == .denied ? .red : .secondary)
-                        }
+                }
+            } header: {
+                Text("City")
+            } footer: {
+                Text("Home, Pick and Find show restaurants from this city.")
+            }
+            .listRowBackground(Color.homeBgBottom)
+
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { option in
+                        Text(option.label).tag(option)
                     }
                 }
-                NavigationLink("Change city") {
-                    CityOverrideView(viewModel: viewModel)
-                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Appearance")
             }
             .listRowBackground(Color.homeBgBottom)
 
@@ -151,6 +159,43 @@ struct SettingsView: View {
         .background(WarmGradientBackground().ignoresSafeArea())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    private static let citySubtitles = ["nyc": "5 boroughs", "bay": "SF & the Bay"]
+
+    private static func cityLabel(_ key: String) -> String? {
+        WeeklyRestaurantService.cities.first { $0.key == key }?.label
+    }
+
+    /// One city choice. `key == nil` is "Current location" (follow GPS).
+    /// Picking a city also clears any legacy free-form override.
+    private func cityRow(key: String?, label: String, subtitle: String) -> some View {
+        let isSelected = key == nil ? weekly.isAutoCity : (!weekly.isAutoCity && weekly.activeCity == key)
+        return Button {
+            if let key { weekly.selectCity(key) } else { weekly.useCurrentLocation() }
+            if viewModel.profile.locationOverride != nil { viewModel.clearCityOverride() }
+        } label: {
+            HStack {
+                Image(systemName: key == nil ? "location.fill" : "building.2")
+                    .foregroundColor(LuckyCard.orange)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label).foregroundColor(.primary)
+                    if !subtitle.isEmpty {
+                        Text(subtitle).font(.caption).foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundColor(LuckyCard.orange)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder

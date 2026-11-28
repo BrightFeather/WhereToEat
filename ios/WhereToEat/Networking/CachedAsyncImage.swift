@@ -26,6 +26,7 @@ struct CachedAsyncImage<Content: View>: View {
     @ViewBuilder let content: (AsyncImagePhase) -> Content
 
     @State private var phase: AsyncImagePhase = .empty
+    @Environment(\.colorScheme) private var colorScheme
 
     init(url: URL?, @ViewBuilder content: @escaping (AsyncImagePhase) -> Content) {
         self.url = url
@@ -33,7 +34,10 @@ struct CachedAsyncImage<Content: View>: View {
     }
 
     var body: some View {
-        content(phase).task(id: url) { await load() }
+        content(phase)
+            // Low light dark theme: photos ~8% dimmer so they don't glare.
+            .brightness(colorScheme == .dark ? -0.08 : 0)
+            .task(id: url) { await load() }
     }
 
     private func load() async {

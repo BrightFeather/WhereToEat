@@ -146,7 +146,7 @@ struct XHSImportCardView: View {
                     .foregroundColor(isSelected ? .accentColor : .secondary)
             }
             .padding(12)
-            .background(Color(.systemBackground))
+            .background(Color.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         }

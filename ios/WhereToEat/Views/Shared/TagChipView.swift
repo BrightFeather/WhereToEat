@@ -11,7 +11,7 @@ struct TagChipView: View {
             .fontWeight(.medium)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(isSelected ? color.opacity(0.15) : Color(.systemGray6))
+            .background(isSelected ? color.opacity(0.15) : Color.surfaceMuted)
             .foregroundColor(isSelected ? color : .secondary)
             .clipShape(Capsule())
             .overlay(Capsule().strokeBorder(isSelected ? color.opacity(0.4) : .clear, lineWidth: 1))

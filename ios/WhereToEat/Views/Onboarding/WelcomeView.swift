@@ -134,7 +134,7 @@ struct WelcomeView: View {
                 .font(.caption).fontWeight(.semibold)
                 .foregroundColor(.primary)
                 .frame(width: 92, height: 28)
-                .background(Color(.systemBackground))
+                .background(Color.surface)
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.14), radius: 10, y: 4)

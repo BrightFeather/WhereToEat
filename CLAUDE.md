@@ -29,8 +29,9 @@ First surface the user sees on open. Layout reacts to whether there are any upco
   - **TOP PICK** (orange) — highest-ranked restaurant passing the filter set.
   - **NEW THIS WEEK** (green) — highest-ranked with `post_created_at` < 14 days.
   - **HIDDEN GEM** (purple) — mid-ranked (20–60% percentile) with a bookable link; deterministic per day + user id so the slot stays stable through the day and refreshes tomorrow.
-- **Single gradient CTA** — `"Swipe through all N picks →"` or `"Swipe through N more picks →"` when bookings exist. Opens Discovery.
-- **Stats row** — `🍽 N picks` (tap → Discovery) · `📍 N saved` (tap → My List via `.switchToMyList` bus).
+- **Trending now** — horizontal rail of restaurants from the most recent popular 小红书 posts (likes × 14-day half-life, roundup posts split; 30-day window widening to 90; hidden under 4).
+- **Stats row** — `🍽 N picks` (tap → Discovery) · `📍 N saved` (tap → My List via `.switchToMyList` bus). The old "Swipe through all N picks" CTA is gone.
+- **I'm feeling lucky** — last card: CRAVING / WHERE chips, "Roll the dice" → full-screen slot-machine roll → Book this one / Roll again (3 rolls a day).
 - **Toolbar** — calendar icon (top-right) → My Bookings · gear icon → Settings.
 
 All picks share the Discovery filter set: server-side `user_reservations`, server-side `user_blocked_restaurants`, on-device `SeenService.seenToday()`, local `WeeklySession.swipedCards`. If `UserProfile.showOnlyReservable` is true, non-bookable restaurants are also dropped.
@@ -81,7 +82,8 @@ User's own saved restaurants via share-sheet import, paste-a-link, or the Discov
 
 ### Settings
 
-- Location override (pin a specific city; off by default).
+- City (Current location or a DB city: New York / Bay Area) — the only place to switch cities; Pick has no city button.
+- Appearance: Light (default) / Dark / Match system.
 - Dietary preferences + default party size.
 - Show-only-reservable toggle.
 - **Account** section — provider + display name when signed in · Sign Out (clears Keychain to a fresh anonymous id + re-enables the login gate) · Sign in button for guests.
