@@ -47,7 +47,7 @@ struct HomeView: View {
                         }
                     }
             }
-            .creamTabBar()
+            .themedTabBar()
             .tabItem { Label("Home", systemImage: "house.fill") }
             .tag(0)
 
@@ -56,7 +56,7 @@ struct HomeView: View {
                 DiscoveryContainerView(viewModel: pickVM)
                     .environmentObject(customListVM)
             }
-            .creamTabBar()
+            .themedTabBar()
             .tabItem { Label("Pick", systemImage: "flame.fill") }
             .tag(1)
 
@@ -66,7 +66,7 @@ struct HomeView: View {
                     .environmentObject(customListVM)
                     .navigationBarHidden(true)
             }
-            .creamTabBar()
+            .themedTabBar()
             .tabItem { Label("Find", systemImage: "map.fill") }
             .tag(2)
 
@@ -75,7 +75,7 @@ struct HomeView: View {
                     .navigationTitle("My List")
                     .environmentObject(customListVM)
             }
-            .creamTabBar()
+            .themedTabBar()
             .tabItem { Label("My List", systemImage: "heart.text.square") }
             .tag(3)
         }
@@ -283,10 +283,13 @@ struct HomeView: View {
     private static func configureTabBarAppearance() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
-        // Cream in both themes: dark mode darkens only the page, the tab bar
-        // stays bright. Unselected items get a fixed gray so they don't turn
-        // light-on-cream in dark mode.
-        appearance.backgroundColor = UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
+        // Follows the theme like the page: cream in light, charcoal in dark.
+        // Unselected items use a mid gray that reads on both.
+        appearance.backgroundColor = UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // charcoal #161210
+                : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)      // cream #FFF0D9
+        }
         let itemGray = UIColor(red: 0.56, green: 0.56, blue: 0.58, alpha: 1.0)   // #8E8E93
         for layout in [appearance.stackedLayoutAppearance,
                        appearance.inlineLayoutAppearance,
@@ -407,13 +410,13 @@ extension Color {
 }
 
 extension View {
-    /// Cream tab bar on every screen of a tab. The UIKit appearance proxy
-    /// alone isn't enough: SwiftUI's `Map` (Find) and some pushed views
-    /// (restaurant detail) put their own material behind the tab bar, which
-    /// showed as system gray.
-    func creamTabBar() -> some View {
+    /// Page-colored tab bar on every screen of a tab (cream in light,
+    /// charcoal in dark). The UIKit appearance proxy alone isn't enough:
+    /// SwiftUI's `Map` (Find) and some pushed views (restaurant detail) put
+    /// their own material behind the tab bar, which showed as system gray.
+    func themedTabBar() -> some View {
         self
-            .toolbarBackground(Color(red: 1.00, green: 0.94, blue: 0.85), for: .tabBar)
+            .toolbarBackground(Color.homeBgMid, for: .tabBar)
             .toolbarBackground(.visible, for: .tabBar)
     }
 
