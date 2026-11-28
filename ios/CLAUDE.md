@@ -92,7 +92,7 @@ The bottom CTA shows when the restaurant has a reservation platform (`reservatio
 
 `FindView` builds a full-bleed `Map` (`pointsOfInterest: .excludingAll`) over which a draggable bottom panel lives. The bottom panel is **deliberately not** a `.sheet` — a permanent `.sheet(isPresented: .constant(true))` would (a) cover the iOS 26 floating tab bar and (b) block the detail-view `.sheet(item:)` from ever firing. Instead it's an in-ZStack overlay; row taps hand off to `presentedRestaurant`, which `.sheet(item:)` opens.
 
-The panel's `.background(Color.homeBgMid)` is followed by a **second** `.background` with `.ignoresSafeArea(.container, edges: .bottom)` — without it, the iOS 26 floating tab bar shows the map terrain around its capsule because the safe-area inset isn't filled.
+The panel's `.background(Color.listPanel)` (cream in light, card color in dark) is followed by a **second** `.background` with `.ignoresSafeArea(.container, edges: .bottom)` — without it, the iOS 26 floating tab bar shows the map terrain around its capsule because the safe-area inset isn't filled.
 
 Mappable filter: rows without `latitude`/`longitude` (typically those that never matched a Google Place) are dropped from `mappable` but kept in `filtered`. The "no map locations" banner shows only when `filtered.count > 0 && mappable.isEmpty`.
 

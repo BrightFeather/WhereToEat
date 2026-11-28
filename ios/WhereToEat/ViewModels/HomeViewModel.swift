@@ -470,6 +470,8 @@ final class HomeViewModel: ObservableObject {
     enum LuckyPlace: Equatable, Hashable {
         case nearMe
         case region(String)
+        /// A neighborhood inside a borough / region.
+        case neighborhood(region: String, name: String)
         case wholeCity
 
         var storageValue: String {
@@ -477,6 +479,16 @@ final class HomeViewModel: ObservableObject {
             case .nearMe: return "near"
             case .wholeCity: return "all"
             case .region(let name): return "region:" + name
+            case .neighborhood(let region, let name): return "hood:" + region + "|" + name
+            }
+        }
+
+        /// The borough / region this place sits in, if any.
+        var region: String? {
+            switch self {
+            case .region(let name): return name
+            case .neighborhood(let region, _): return region
+            case .nearMe, .wholeCity: return nil
             }
         }
 
@@ -485,8 +497,15 @@ final class HomeViewModel: ObservableObject {
             case "near": self = .nearMe
             case "all": self = .wholeCity
             default:
-                guard storageValue.hasPrefix("region:") else { return nil }
-                self = .region(String(storageValue.dropFirst("region:".count)))
+                if storageValue.hasPrefix("region:") {
+                    self = .region(String(storageValue.dropFirst("region:".count)))
+                } else if storageValue.hasPrefix("hood:") {
+                    let parts = storageValue.dropFirst("hood:".count).split(separator: "|", maxSplits: 1)
+                    guard parts.count == 2 else { return nil }
+                    self = .neighborhood(region: String(parts[0]), name: String(parts[1]))
+                } else {
+                    return nil
+                }
             }
         }
     }
@@ -570,6 +589,7 @@ final class HomeViewModel: ObservableObject {
         switch luckyPlace {
         case .nearMe: return nearMeAvailable ? .nearMe : .wholeCity
         case .region(let name): return availableBoroughs.contains(name) ? luckyPlace : .wholeCity
+        case .neighborhood(let region, _): return availableBoroughs.contains(region) ? luckyPlace : .wholeCity
         case .wholeCity: return .wholeCity
         }
     }
@@ -620,9 +640,28 @@ final class HomeViewModel: ObservableObject {
             normalizedBorough($0.borough)
         }.mapValues(\.count)
         let regions = availableBoroughs.filter { name in
-            counts[name, default: 0] > 0 || luckyPlace == .region(name)
+            counts[name, default: 0] > 0 || luckyPlace.region == name
         }
         return (nearMeAvailable ? [.nearMe] : []) + [.wholeCity] + regions.map { .region($0) }
+    }
+
+    /// NEIGHBORHOOD chips, shown once a borough / region is picked: that
+    /// region's neighborhoods with a match for the chosen cuisine, in the
+    /// canonical order from `/api/locations` (unknown names last, A–Z). The
+    /// selected neighborhood always stays, even if it has no match now.
+    var luckyNeighborhoodOptions: [String] {
+        guard let region = luckyPlace.region else { return [] }
+        var counts: [String: Int] = [:]
+        for r in luckyBasePool where matchesLuckyCuisine(r) && normalizedBorough(r.borough) == region {
+            if let hood = normalizedNeighborhood(r.neighborhood) { counts[hood, default: 0] += 1 }
+        }
+        if case .neighborhood(_, let selected) = luckyPlace, counts[selected] == nil {
+            counts[selected] = 0
+        }
+        let canonical = regionsService.regions?.neighborhoods(in: region) ?? []
+        let ordered = canonical.filter { counts[$0] != nil }
+        let extras = counts.keys.filter { !canonical.contains($0) }.sorted()
+        return ordered + extras
     }
 
     private func matchesLuckyCuisine(_ r: WeeklyRestaurant) -> Bool {
@@ -644,6 +683,10 @@ final class HomeViewModel: ObservableObject {
         case .region(let name):
             return LuckyMatch(restaurants: base.filter { normalizedBorough($0.borough) == name },
                               radiusMeters: nil)
+        case .neighborhood(let region, let name):
+            return LuckyMatch(restaurants: base.filter {
+                normalizedBorough($0.borough) == region && normalizedNeighborhood($0.neighborhood) == name
+            }, radiusMeters: nil)
         case .wholeCity:
             return LuckyMatch(restaurants: base, radiusMeters: nil)
         case .nearMe:

@@ -27,7 +27,8 @@ struct LuckyCard: View {
             }
 
             rowLabel("CRAVING")
-            chipRow(selectedId: viewModel.luckyCuisine ?? "any") {
+            chipRow(selectedId: viewModel.luckyCuisine ?? "any",
+                    contentKey: viewModel.luckyCuisineOptions) {
                 chip("Surprise me", selected: viewModel.luckyCuisine == nil) {
                     viewModel.selectLuckyCuisine(nil)
                 }
@@ -43,15 +44,39 @@ struct LuckyCard: View {
             }
 
             rowLabel("WHERE")
-            chipRow(selectedId: viewModel.luckyPlace.storageValue) {
+            chipRow(selectedId: selectedPlaceChipId,
+                    contentKey: viewModel.luckyPlaceOptions.map(\.storageValue)) {
                 ForEach(viewModel.luckyPlaceOptions, id: \.self) { place in
                     chip(placeLabel(place),
-                         icon: place == .nearMe ? "location.fill" : nil,
-                         selected: viewModel.luckyPlace == place) {
-                        viewModel.selectLuckyPlace(place)
+                         icon: place == .nearMe ? "location.fill" : (isExpandable(place) ? "chevron.down" : nil),
+                         selected: isPlaceChipSelected(place)) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            viewModel.selectLuckyPlace(place)
+                        }
                     }
                     .id(place.storageValue)
                 }
+            }
+
+            // Picking a borough / region opens its neighborhoods, like the
+            // Pick page's filter rows.
+            if let region = viewModel.luckyPlace.region, !viewModel.luckyNeighborhoodOptions.isEmpty {
+                rowLabel("NEIGHBORHOOD")
+                chipRow(selectedId: viewModel.luckyPlace.storageValue,
+                        contentKey: viewModel.luckyNeighborhoodOptions) {
+                    chip("All of \(region)", selected: viewModel.luckyPlace == .region(region)) {
+                        viewModel.selectLuckyPlace(.region(region))
+                    }
+                    .id(HomeViewModel.LuckyPlace.region(region).storageValue)
+                    ForEach(viewModel.luckyNeighborhoodOptions, id: \.self) { hood in
+                        let place = HomeViewModel.LuckyPlace.neighborhood(region: region, name: hood)
+                        chip(hood, selected: viewModel.luckyPlace == place) {
+                            viewModel.selectLuckyPlace(place)
+                        }
+                        .id(place.storageValue)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             HStack(spacing: 10) {
@@ -120,6 +145,7 @@ struct LuckyCard: View {
     /// sliver clipped at the padding line) and keeps the selected chip
     /// scrolled into view, e.g. a remembered "Staten Island".
     private func chipRow<Content: View>(selectedId: String,
+                                        contentKey: [String] = [],
                                         @ViewBuilder _ content: () -> Content) -> some View {
         let chips = content()
         return ScrollViewReader { proxy in
@@ -132,6 +158,9 @@ struct LuckyCard: View {
             .onChange(of: selectedId) { _, id in
                 withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
             }
+            // Options can load or reorder after first render (the region
+            // list arrives async): re-center on the selection when they do.
+            .onChange(of: contentKey) { _, _ in proxy.scrollTo(selectedId, anchor: .center) }
         }
     }
 
@@ -159,6 +188,10 @@ struct LuckyCard: View {
         } else if matchCount == 0 {
             if viewModel.luckyPlace == .wholeCity {
                 pill("Try Surprise me", icon: "sparkles") { viewModel.selectLuckyCuisine(nil) }
+            } else if case .neighborhood(let region, _) = viewModel.luckyPlace {
+                pill("Widen to all of \(region)", icon: "arrow.up.left.and.arrow.down.right") {
+                    viewModel.selectLuckyPlace(.region(region))
+                }
             } else {
                 pill("Widen to all of \(viewModel.luckyCityLabel)", icon: "arrow.up.left.and.arrow.down.right") {
                     viewModel.selectLuckyPlace(.wholeCity)
@@ -183,6 +216,9 @@ struct LuckyCard: View {
                 .background(Capsule().fill(Self.orange))
         }
         .buttonStyle(.plain)
+        // The button keeps its full label; the meta line beside it wraps.
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
     }
 
     private func metaLine(_ match: HomeViewModel.LuckyMatch) -> String {
@@ -202,8 +238,28 @@ struct LuckyCard: View {
         switch place {
         case .nearMe: return "Near me"
         case .region(let name): return name
+        case .neighborhood(_, let name): return name
         case .wholeCity: return "All of \(viewModel.luckyCityLabel)"
         }
+    }
+
+    /// A borough chip stays highlighted while one of its neighborhoods is
+    /// picked.
+    private func isPlaceChipSelected(_ place: HomeViewModel.LuckyPlace) -> Bool {
+        if case .region(let name) = place { return viewModel.luckyPlace.region == name }
+        return viewModel.luckyPlace == place
+    }
+
+    private var selectedPlaceChipId: String {
+        if let region = viewModel.luckyPlace.region {
+            return HomeViewModel.LuckyPlace.region(region).storageValue
+        }
+        return viewModel.luckyPlace.storageValue
+    }
+
+    private func isExpandable(_ place: HomeViewModel.LuckyPlace) -> Bool {
+        if case .region = place { return true }
+        return false
     }
 
     static func milesLabel(_ meters: Double) -> String {
