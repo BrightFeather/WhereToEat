@@ -21,7 +21,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { XhsBrowser, jitter, type SearchCard } from '../api/_lib/xhsBrowser';
+import { XhsBrowser, jitter, parseCount, type SearchCard } from '../api/_lib/xhsBrowser';
 import type { RawXhsPost } from '../api/_lib/xhsScraper';
 
 const KEYWORDS_BY_CITY: Record<string, string[]> = {
@@ -137,7 +137,10 @@ async function read(xb: XhsBrowser) {
     const file = path.join(NOTES_DIR, `${c.id}.json`);
     let note: { title: string; desc: string; time: number | null; likes: number } | null = null;
     if (fs.existsSync(file)) {
-      note = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const n = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // Re-derive from the raw count: notes cached before the comma fix stored "6,809" as 6.
+      const rawLikes = n.raw?.interactInfo?.likedCount;
+      note = rawLikes != null ? { ...n, likes: parseCount(rawLikes) } : n;
       cached++;
     } else {
       if (newReads >= MAX_NEW_READS) {

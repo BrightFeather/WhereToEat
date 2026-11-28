@@ -23,7 +23,8 @@ export const jitter = (min: number, max: number) => sleep(min + Math.random() * 
 
 export function parseCount(raw: unknown): number {
   if (raw == null) return 0;
-  const s = String(raw).trim();
+  // rednote's English UI formats note counts with thousands separators ("6,809").
+  const s = String(raw).trim().replace(/,/g, '');
   if (!s) return 0;
   const n = parseFloat(s);
   if (Number.isNaN(n)) return 0;

@@ -73,6 +73,7 @@ The scraper is a real Chrome driven over CDP. The site signs its own requests, s
 Gotchas:
 - **Honeypots:** the search filter panel renders an invisible decoy twin before each real tag (`button-hp-installed`, `data-hp-kind`, `aria-hidden="true"`, opacity 1e-05). Never select by text alone. `xhsBrowser.clickFilterTag` excludes the decoys.
 - The filter panel opens on **hover** of `div.filter`. After hovering, move the mouse back over the feed before scrolling, or the wheel scrolls the panel.
+- **Counts have thousands separators** in rednote's English UI (`"6,809"`). `parseCount` strips commas (fixed 2026-11-27; before that the most-liked posts parsed as single digits). Cached notes re-derive likes from `raw.interactInfo.likedCount`. `scripts/repair-source-likes.ts` patches rows already written.
 - On a captcha or verify page the script pauses (up to 10 min) for a human to solve it in the window. Five failed reads in a row abort the read phase.
 - Code lives in `api/_lib/xhsBrowser.ts` (local only; never import it from a deployed route) and `scripts/xhs-browser-ingest.ts`. `scripts/xhs-browser-probe.ts` is the original feasibility probe.
 
