@@ -163,7 +163,6 @@ struct HomeView: View {
                     LuckyCard(viewModel: viewModel) {
                         luckyResult = viewModel.rollLucky()
                     }
-                    .brightCard()
                     .padding(.horizontal)
                 }
             }
@@ -206,7 +205,7 @@ struct HomeView: View {
                 HStack(spacing: 12) {
                     ForEach(picks) { pick in
                         NavigationLink(destination: detailDestination(for: pick.restaurant)) {
-                            TrendingCard(pick: pick).brightCard()
+                            TrendingCard(pick: pick)
                         }
                         .buttonStyle(.plain)
                     }
@@ -235,7 +234,7 @@ struct HomeView: View {
             VStack(spacing: 12) {
                 ForEach(viewModel.homePicks) { pick in
                     NavigationLink(destination: detailDestination(for: pick.restaurant)) {
-                        HomePickCard(pick: pick).brightCard()
+                        HomePickCard(pick: pick)
                     }
                     .buttonStyle(.plain)
                 }
@@ -270,7 +269,6 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
         }
-        .brightCard()
         .padding(.horizontal)
     }
 
@@ -285,11 +283,7 @@ struct HomeView: View {
         appearance.configureWithOpaqueBackground()
         // Follows the theme like the page: cream in light, charcoal in dark.
         // Unselected items use a mid gray that reads on both.
-        appearance.backgroundColor = UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // charcoal #161210
-                : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)      // cream #FFF0D9
-        }
+        appearance.backgroundColor = .tabBarFill
         let itemGray = UIColor(red: 0.56, green: 0.56, blue: 0.58, alpha: 1.0)   // #8E8E93
         for layout in [appearance.stackedLayoutAppearance,
                        appearance.inlineLayoutAppearance,
@@ -308,13 +302,13 @@ struct HomeView: View {
         if let inlineFont = UIFont(name: "Fraunces", size: 24) {
             nav.titleTextAttributes = [
                 .font: inlineFont,
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.ink,
             ]
         }
         if let largeFont = UIFont(name: "Fraunces", size: 34) {
             nav.largeTitleTextAttributes = [
                 .font: largeFont,
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.ink,
             ]
         }
         UINavigationBar.appearance().standardAppearance = nav
@@ -330,21 +324,21 @@ extension Color {
     /// `homeBgMid` cream wash now via `WarmGradientBackground`.
     static let homeBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
+            ? UIColor(red: 0.141, green: 0.110, blue: 0.090, alpha: 1.0)   // raised #241C17
             : UIColor(red: 1.00, green: 0.87, blue: 0.73, alpha: 1.0)
     })
     /// Background wash used by Home, My List, and Welcome — a calm cream that
     /// reads as "warm" without competing with the cards layered on top.
     static let homeBgMid = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // warm charcoal #161210
+            ? UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1.0)   // Low light page #14110F
             : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
     })
     /// Card fill on the Home / My List wash. In dark mode it is *lighter*
     /// than the page (#221C18 on #161210) so cards read as raised.
     static let homeBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.133, green: 0.110, blue: 0.094, alpha: 1.0)   // #221C18
+            ? UIColor(red: 0.122, green: 0.102, blue: 0.090, alpha: 1.0)   // card #1F1A17
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)
     })
 
@@ -354,17 +348,17 @@ extension Color {
     /// the detail view to both the Home cream and the Discovery mint.
     static let detailBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
+            ? UIColor(red: 0.141, green: 0.110, blue: 0.090, alpha: 1.0)   // #241C17
             : UIColor(red: 1.00, green: 0.86, blue: 0.71, alpha: 1.0)   // warm peach #FFDBB5
     })
     static let detailBgMid = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.110, green: 0.090, blue: 0.078, alpha: 1.0)   // #1C1714
+            ? UIColor(red: 0.102, green: 0.086, blue: 0.075, alpha: 1.0)   // #1A1613
             : UIColor(red: 1.00, green: 0.95, blue: 0.87, alpha: 1.0)   // cream #FFF1DD
     })
     static let detailBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // #161210
+            ? UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1.0)   // #14110F
             : UIColor(red: 0.88, green: 0.95, blue: 0.92, alpha: 1.0)   // soft mint #E1F2EA
     })
 
@@ -374,7 +368,7 @@ extension Color {
     /// against the cream wash. One token = one tweak when palette evolves.
     static let cardBorder = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 1.00, green: 0.92, blue: 0.82, alpha: 0.10)   // faint cream edge
+            ? UIColor(red: 1.00, green: 0.94, blue: 0.86, alpha: 0.07)   // faint warm edge
             : UIColor(red: 0.62, green: 0.42, blue: 0.18, alpha: 0.22)
     })
 
@@ -384,12 +378,12 @@ extension Color {
     /// card photo and the swipe pills stay neutral.
     static let discoveryBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.110, green: 0.090, blue: 0.078, alpha: 1.0)   // #1C1714
+            ? UIColor(red: 0.102, green: 0.086, blue: 0.075, alpha: 1.0)   // #1A1613
             : UIColor(red: 0.85, green: 0.94, blue: 0.91, alpha: 1.0)   // soft mint #D9F0E8
     })
     static let discoveryBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.086, green: 0.071, blue: 0.063, alpha: 1.0)   // #161210
+            ? UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1.0)   // #14110F
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)   // near-white cream
     })
 
@@ -398,32 +392,48 @@ extension Color {
     /// sits *below* the #161210 page and reads as a hole.
     static let surface = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.133, green: 0.110, blue: 0.094, alpha: 1.0)   // #221C18
+            ? UIColor(red: 0.122, green: 0.102, blue: 0.090, alpha: 1.0)   // #1F1A17
             : UIColor.systemBackground.resolvedColor(with: trait)
     })
-    /// Placeholder / inset fill. Light: `systemGray6`. Dark: #2A201A.
+    /// Tab bar fill. Light: cream (same as the page). Dark: #1A1613, a hair
+    /// above the page so the bar reads as its own layer.
+    static let tabBarFill = Color(UIColor.tabBarFill)
+
+    /// Placeholder / inset fill. Light: `systemGray6`. Dark: #2E2621.
     static let surfaceMuted = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.165, green: 0.125, blue: 0.102, alpha: 1.0)   // #2A201A
+            ? UIColor(red: 0.180, green: 0.149, blue: 0.129, alpha: 1.0)   // #2E2621
             : UIColor.systemGray6.resolvedColor(with: trait)
     })
 }
 
 extension View {
-    /// Page-colored tab bar on every screen of a tab (cream in light,
-    /// charcoal in dark). The UIKit appearance proxy alone isn't enough:
+    /// Themed tab bar on every screen of a tab (cream in light, #1A1613 in
+    /// dark). The UIKit appearance proxy alone isn't enough:
     /// SwiftUI's `Map` (Find) and some pushed views (restaurant detail) put
     /// their own material behind the tab bar, which showed as system gray.
     func themedTabBar() -> some View {
         self
-            .toolbarBackground(Color.homeBgMid, for: .tabBar)
+            .toolbarBackground(Color.tabBarFill, for: .tabBar)
             .toolbarBackground(.visible, for: .tabBar)
     }
 
-    /// Dark theme = dark page, bright cards (user, 2026-11-27): cards, chips
-    /// and buttons keep the light palette, including their text colors, while
-    /// the page behind them goes charcoal.
-    func brightCard() -> some View { environment(\.colorScheme, .light) }
+}
+
+extension UIColor {
+    /// Navigation-bar title color: warm off-white #EDE4D8 in dark instead of
+    /// pure white; system label in light. Not set app-wide, because a root
+    /// `foregroundStyle` would also recolor every button's tint.
+    static let ink = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.929, green: 0.894, blue: 0.847, alpha: 1.0)   // #EDE4D8
+            : UIColor.label.resolvedColor(with: trait)
+    }
+    static let tabBarFill = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.102, green: 0.086, blue: 0.075, alpha: 1.0)   // #1A1613
+            : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)      // cream #FFF0D9
+    }
 }
 
 /// Shared warm wash used as the background on Home and My List. Flat fill of
@@ -487,11 +497,17 @@ private struct HomePickCard: View {
             .joined(separator: " · ")
     }
 
+    /// Slot label colors. Dark mode uses softened versions so they don't
+    /// glow on the Low light page.
     private var labelAccent: Color {
         switch pick.label {
-        case .topPick:     return Color(red: 0.98, green: 0.48, blue: 0.10)   // orange
-        case .newThisWeek: return Color(red: 0.20, green: 0.65, blue: 0.35)   // green
-        case .hiddenGem:   return Color(red: 0.45, green: 0.20, blue: 0.95)   // purple
+        case .topPick:     return .accentColor   // orange
+        case .newThisWeek: return Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.56, green: 0.78, blue: 0.60, alpha: 1)    // #8FC79A
+            : UIColor(red: 0.20, green: 0.65, blue: 0.35, alpha: 1) })
+        case .hiddenGem:   return Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.73, green: 0.65, blue: 0.94, alpha: 1)    // #B9A6F0
+            : UIColor(red: 0.45, green: 0.20, blue: 0.95, alpha: 1) })
         }
     }
 
@@ -789,7 +805,6 @@ struct DiscoveryContainerView: View {
                     ))
                 }
             }
-            .brightCard()
             .padding(.top, 3)
             .padding(.bottom, 14)
             .frame(maxWidth: .infinity)
@@ -829,7 +844,7 @@ private struct FilterChip: View {
     let action: () -> Void
 
     // Bold solid purple — distinct from cuisine (orange) and neighborhood (blue).
-    private static let selectedFill = Color(red: 0.45, green: 0.20, blue: 0.95)
+    private static let selectedFill = Color.accentColor   // one accent across tabs (was purple)
 
     var body: some View {
         Button(action: action) {

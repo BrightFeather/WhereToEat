@@ -18,8 +18,7 @@ struct CustomListView: View {
                         NavigationLink(destination: RestaurantDetailView(restaurant: restaurant)) {
                             CustomRestaurantRowView(restaurant: restaurant)
                         }
-                        .brightCard()
-                        .listRowBackground(Color.homeBgBottom.brightCard())
+                        .listRowBackground(Color.homeBgBottom)
                         .swipeActions(edge: .trailing) {
                             if restaurant.reservationSource != nil || restaurant.effectiveBookingUrl != nil {
                                 Button {

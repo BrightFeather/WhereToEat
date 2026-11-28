@@ -1,12 +1,14 @@
 import SwiftUI
 
 /// "I'm feeling lucky" — last card on Home. Peach card palette: the detail
-/// page's peach → cream wash, kept bright in dark mode too, with
+/// page's peach → cream wash in light mode, a raised Low light card in dark, with
 /// Discovery's orange chip style. CRAVING / WHERE chip rows pick the inputs;
 /// only the button rolls.
 struct LuckyCard: View {
     @ObservedObject var viewModel: HomeViewModel
     let onRoll: () -> Void
+
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let match = viewModel.luckyMatch
@@ -73,7 +75,7 @@ struct LuckyCard: View {
             RoundedRectangle(cornerRadius: 20).strokeBorder(palette.border, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 10, y: 3)
     }
 
     // MARK: - Pieces
@@ -212,7 +214,7 @@ struct LuckyCard: View {
 
     // MARK: - Palette
 
-    static let orange = Color(red: 0.98, green: 0.48, blue: 0.10)   // #FA7A1A
+    static let orange = Color.accentColor   // #FA7A1A light / #F0843C dark (AccentColor asset)
 
     private struct Palette {
         let background: [Color]
@@ -225,18 +227,28 @@ struct LuckyCard: View {
         let fanEdge: Color
     }
 
-    /// Always the light Peach palette: Home renders this card with
-    /// `.brightCard()`, so it stays bright on the dark-mode page.
+    /// Light: Peach card. Dark: Low light — a raised #241C17 card with an
+    /// orange hairline and the same orange as the only accent.
     private var palette: Palette {
-        Palette(
-            background: [Color(rgb: 0xFFDBB5), Color(rgb: 0xFFF1DD)],
-            border: Color(red: 0.62, green: 0.42, blue: 0.18, opacity: 0.28),
-            caption: Color(rgb: 0xBF610D),
-            title: Color(rgb: 0x3A1F0F),
-            rowLabel: Color(rgb: 0x9E6B2E),
-            chipFill: .white,
-            chipText: Color(rgb: 0xBF610D),
-            fanEdge: .white)
+        scheme == .dark
+            ? Palette(
+                background: [Color(rgb: 0x241C17), Color(rgb: 0x211A15)],
+                border: Color(rgb: 0xF0843C, opacity: 0.35),
+                caption: Color(rgb: 0xF0843C),
+                title: Color(rgb: 0xEDE4D8),
+                rowLabel: Color(rgb: 0x9C8F82),
+                chipFill: Color(rgb: 0x2E2621),
+                chipText: Color(rgb: 0xD9C9B6),
+                fanEdge: Color(rgb: 0xEDE4D8))
+            : Palette(
+                background: [Color(rgb: 0xFFDBB5), Color(rgb: 0xFFF1DD)],
+                border: Color(red: 0.62, green: 0.42, blue: 0.18, opacity: 0.28),
+                caption: Color(rgb: 0xBF610D),
+                title: Color(rgb: 0x3A1F0F),
+                rowLabel: Color(rgb: 0x9E6B2E),
+                chipFill: .white,
+                chipText: Color(rgb: 0xBF610D),
+                fanEdge: .white)
     }
 }
 

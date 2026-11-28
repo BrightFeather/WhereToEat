@@ -216,18 +216,17 @@ struct CardDeckView: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.subheadline).fontWeight(.semibold)
-                    .foregroundColor(Color(red: 0.20, green: 0.55, blue: 0.95).opacity(0.85))
+                    .foregroundColor(Color.accentColor.opacity(0.85))
                     .frame(width: 42, height: 42)
                     .background(Color.surface)
                     .clipShape(Circle())
                     .overlay(
                         Circle()
-                            .strokeBorder(Color(red: 0.20, green: 0.55, blue: 0.95).opacity(0.45),
+                            .strokeBorder(Color.accentColor.opacity(0.45),
                                           lineWidth: 1)
                     )
             }
             .buttonStyle(PressFeedbackButtonStyle())
-            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Reset seen and disliked restaurants")
 
             Text("reset")
@@ -266,7 +265,6 @@ struct CardDeckView: View {
             }
             .disabled(!viewModel.canUndo)
             .buttonStyle(PressFeedbackButtonStyle())
-            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Undo last swipe")
 
             Text("undo")
@@ -300,7 +298,6 @@ struct CardDeckView: View {
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             }
             .buttonStyle(PressFeedbackButtonStyle())
-            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Pass")
 
             Text("pass")
@@ -329,7 +326,6 @@ struct CardDeckView: View {
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
             }
             .buttonStyle(PressFeedbackButtonStyle())
-            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Like")
 
             Text("like")
@@ -368,7 +364,6 @@ struct CardDeckView: View {
                     .scaleEffect(bookmarkScale)
             }
             .buttonStyle(PressFeedbackButtonStyle())
-            .brightCard()   // circle + icon stay bright in dark mode
             .accessibilityLabel("Save to My List")
 
             Text("save")

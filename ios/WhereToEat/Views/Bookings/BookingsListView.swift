@@ -62,8 +62,7 @@ struct BookingsListView: View {
                             day: dayFormatter.string(from: reservation.datetime),
                             time: timeFormatter.string(from: reservation.datetime)
                         )
-                        .brightCard()
-                        .listRowBackground(Color.homeBgBottom.brightCard())
+                        .listRowBackground(Color.homeBgBottom)
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 pendingRemoval = reservation

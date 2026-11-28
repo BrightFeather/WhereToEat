@@ -732,7 +732,6 @@ struct ReviewSnippetView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.cardBorder, lineWidth: 1)
         )
-        .brightCard()
     }
 }
 
@@ -839,7 +838,6 @@ private struct SourceQuoteCard: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.cardBorder, lineWidth: 1)
             )
-            .brightCard()
         }
         .buttonStyle(.plain)
         .disabled(postURL == nil)
