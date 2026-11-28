@@ -12,10 +12,13 @@ struct SettingsView: View {
         Form {
             Section {
                 cityRow(key: nil, label: "Current location",
-                        subtitle: weekly.gpsCity.flatMap(Self.cityLabel).map { "Near \($0)" }
-                            ?? "Not near a supported city · New York")
+                        subtitle: currentLocationSubtitle)
                 ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
-                    cityRow(key: city.key, label: city.label, subtitle: Self.citySubtitles[city.key] ?? "")
+                    let comingSoon = weekly.unavailableCities.contains(city.key)
+                    cityRow(key: city.key, label: city.label,
+                            subtitle: comingSoon ? "Coming soon" : (Self.citySubtitles[city.key] ?? ""))
+                        .disabled(comingSoon)
+                        .opacity(comingSoon ? 0.5 : 1)
                 }
                 // Free-form overrides from older builds still steer the GPS
                 // coordinates; let the user clear one.
@@ -159,6 +162,18 @@ struct SettingsView: View {
         .background(WarmGradientBackground().ignoresSafeArea())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    /// "Near Bay Area", or a fallback note when GPS is outside every city or
+    /// in a city whose data isn't live yet.
+    private var currentLocationSubtitle: String {
+        guard let gps = weekly.gpsCity, let label = Self.cityLabel(gps) else {
+            return "Not near a supported city · New York"
+        }
+        if weekly.unavailableCities.contains(gps) {
+            return "Near \(label) · coming soon, showing New York"
+        }
+        return "Near \(label)"
     }
 
     private static let citySubtitles = ["nyc": "5 boroughs", "bay": "SF & the Bay", "la": "LA & Orange County"]

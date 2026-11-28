@@ -53,9 +53,24 @@ final class WeeklyRestaurantService: ObservableObject {
     /// Backend city key the deck (Home's "This week's picks", Pick, Find) shows:
     /// the city picked on the Pick page, else the GPS city, else New York.
     @Published private(set) var activeCity: String =
-        UserDefaults.standard.string(forKey: WeeklyRestaurantService.selectedCityKey)
+        WeeklyRestaurantService.storedSelectedCity
         ?? WeeklyRestaurantService.cityKey(for: LocationService.shared.currentLocation)
         ?? WeeklyRestaurantService.defaultCity
+
+    /// Cities whose deck came back `building` with no restaurants and nothing
+    /// cached: the city is in the app but has no data in prod yet (Los
+    /// Angeles after build 48). The app falls back to another city instead
+    /// of polling forever, and Settings shows the city as "Coming soon".
+    /// Session-only, so a city comes back on the next launch once its data
+    /// lands.
+    @Published private(set) var unavailableCities: Set<String> = []
+
+    /// The saved explicit pick, ignored if it's no longer a supported city.
+    private static var storedSelectedCity: String? {
+        guard let key = UserDefaults.standard.string(forKey: selectedCityKey),
+              cities.contains(where: { $0.key == key }) else { return nil }
+        return key
+    }
 
     private let api = APIClient.shared
     private let cache = WeeklyCache.shared
@@ -71,14 +86,15 @@ final class WeeklyRestaurantService: ObservableObject {
             .sink { [weak self] detected in
                 guard let self else { return }
                 self.gpsCity = detected
-                if self.isAutoCity { self.switchTo(detected ?? Self.defaultCity) }
+                if self.isAutoCity { self.switchTo(self.availableGPSCity ?? Self.defaultCity) }
             }
             .store(in: &cancellables)
     }
 
     /// Pick-page picker: show `key` regardless of GPS (persisted).
     func selectCity(_ key: String) {
-        guard Self.cities.contains(where: { $0.key == key }) else { return }
+        guard Self.cities.contains(where: { $0.key == key }),
+              !unavailableCities.contains(key) else { return }
         UserDefaults.standard.set(key, forKey: Self.selectedCityKey)
         isAutoCity = false
         switchTo(key)
@@ -88,7 +104,27 @@ final class WeeklyRestaurantService: ObservableObject {
     func useCurrentLocation() {
         UserDefaults.standard.removeObject(forKey: Self.selectedCityKey)
         isAutoCity = true
-        switchTo(gpsCity ?? Self.defaultCity)
+        switchTo(availableGPSCity ?? Self.defaultCity)
+    }
+
+    /// The GPS city, unless it has no data yet.
+    private var availableGPSCity: String? {
+        guard let gpsCity, !unavailableCities.contains(gpsCity) else { return nil }
+        return gpsCity
+    }
+
+    /// A city answered `building` with nothing to show: remember it and, if
+    /// it's the one on screen, go back to GPS (or New York) instead of
+    /// leaving Home / Pick / Find on an endless spinner.
+    private func markCityUnavailable(_ city: String) {
+        unavailableCities.insert(city)
+        print("[WeeklyRestaurantService] \(city) has no data yet; falling back")
+        guard city == activeCity else { return }
+        if !isAutoCity {
+            UserDefaults.standard.removeObject(forKey: Self.selectedCityKey)
+            isAutoCity = true
+        }
+        switchTo(availableGPSCity ?? Self.defaultCity)
     }
 
     private func switchTo(_ key: String) {
@@ -237,6 +273,14 @@ final class WeeklyRestaurantService: ObservableObject {
             status = .stale(wrapper.restaurants ?? [])
             startPolling(city: city)
         case "building":
+            // No rows at all and nothing cached for this city = the city
+            // isn't live in prod yet. Never applies to the default city, so
+            // a fresh install during a pipeline run still waits for NYC.
+            let hasCache = cache.cached?.city == city
+            if (wrapper.restaurants ?? []).isEmpty, !hasCache, city != Self.defaultCity {
+                markCityUnavailable(city)
+                return
+            }
             status = .building
             startPolling(city: city)
         default:
