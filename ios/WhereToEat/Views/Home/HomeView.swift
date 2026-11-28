@@ -324,7 +324,7 @@ extension Color {
     /// `homeBgMid` cream wash now via `WarmGradientBackground`.
     static let homeBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.141, green: 0.110, blue: 0.090, alpha: 1.0)   // raised #241C17
+            ? UIColor(red: 0.192, green: 0.157, blue: 0.133, alpha: 1.0)   // raised #312822
             : UIColor(red: 1.00, green: 0.87, blue: 0.73, alpha: 1.0)
     })
     /// Background wash used by Home, My List, and Welcome — a calm cream that
@@ -335,10 +335,10 @@ extension Color {
             : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
     })
     /// Card fill on the Home / My List wash. In dark mode it is *lighter*
-    /// than the page (#221C18 on #161210) so cards read as raised.
+    /// than the page (#2A231E on #14110F) so cards read as raised.
     static let homeBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.122, green: 0.102, blue: 0.090, alpha: 1.0)   // card #1F1A17
+            ? UIColor(red: 0.165, green: 0.137, blue: 0.118, alpha: 1.0)   // card #2A231E
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)
     })
 
@@ -348,7 +348,7 @@ extension Color {
     /// the detail view to both the Home cream and the Discovery mint.
     static let detailBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.141, green: 0.110, blue: 0.090, alpha: 1.0)   // #241C17
+            ? UIColor(red: 0.192, green: 0.157, blue: 0.133, alpha: 1.0)   // #312822
             : UIColor(red: 1.00, green: 0.86, blue: 0.71, alpha: 1.0)   // warm peach #FFDBB5
     })
     static let detailBgMid = Color(UIColor { trait in
@@ -392,8 +392,16 @@ extension Color {
     /// sits *below* the #161210 page and reads as a hole.
     static let surface = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.122, green: 0.102, blue: 0.090, alpha: 1.0)   // #1F1A17
+            ? UIColor(red: 0.165, green: 0.137, blue: 0.118, alpha: 1.0)   // #2A231E
             : UIColor.systemBackground.resolvedColor(with: trait)
+    })
+    /// Find's bottom list panel. Light: the cream page color (unchanged).
+    /// Dark: the card color, so the restaurant list reads as a raised sheet
+    /// over the map instead of a slab of page background.
+    static let listPanel = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.165, green: 0.137, blue: 0.118, alpha: 1.0)   // #2A231E
+            : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)      // cream #FFF0D9
     })
     /// Tab bar fill. Light: cream (same as the page). Dark: #1A1613, a hair
     /// above the page so the bar reads as its own layer.
@@ -402,7 +410,7 @@ extension Color {
     /// Placeholder / inset fill. Light: `systemGray6`. Dark: #2E2621.
     static let surfaceMuted = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.180, green: 0.149, blue: 0.129, alpha: 1.0)   // #2E2621
+            ? UIColor(red: 0.227, green: 0.188, blue: 0.165, alpha: 1.0)   // #3A302A
             : UIColor.systemGray6.resolvedColor(with: trait)
     })
 }

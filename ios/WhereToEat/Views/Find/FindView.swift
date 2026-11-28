@@ -363,7 +363,7 @@ struct FindView: View {
                 }
             )
         }
-        .background(Color.homeBgMid)
+        .background(Color.listPanel)
         .clipShape(
             UnevenRoundedRectangle(
                 topLeadingRadius: 18,
@@ -382,7 +382,7 @@ struct FindView: View {
         // clipShape so the rounded top corners stay sharp while the bottom
         // edge bleeds down to the screen edge.
         .background(
-            Color.homeBgMid
+            Color.listPanel
                 .ignoresSafeArea(.container, edges: .bottom)
         )
     }

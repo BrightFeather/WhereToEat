@@ -227,17 +227,17 @@ struct LuckyCard: View {
         let fanEdge: Color
     }
 
-    /// Light: Peach card. Dark: Low light — a raised #241C17 card with an
+    /// Light: Peach card. Dark: Low light — a raised #312822 card with an
     /// orange hairline and the same orange as the only accent.
     private var palette: Palette {
         scheme == .dark
             ? Palette(
-                background: [Color(rgb: 0x241C17), Color(rgb: 0x211A15)],
+                background: [Color(rgb: 0x312822), Color(rgb: 0x2C241F)],
                 border: Color(rgb: 0xF0843C, opacity: 0.35),
                 caption: Color(rgb: 0xF0843C),
                 title: Color(rgb: 0xEDE4D8),
                 rowLabel: Color(rgb: 0x9C8F82),
-                chipFill: Color(rgb: 0x2E2621),
+                chipFill: Color(rgb: 0x3A302A),
                 chipText: Color(rgb: 0xD9C9B6),
                 fanEdge: Color(rgb: 0xEDE4D8))
             : Palette(
