@@ -22,12 +22,13 @@ final class WeeklyRestaurantService: ObservableObject {
     /// Cities the deck can show: backend key → label for the Pick-page picker.
     /// Only cities with live data belong here (new cities are added once their
     /// first ingest is synced; see agent_docs/multi-city-expansion.md).
-    static let cities: [(key: String, label: String)] = [("nyc", "New York"), ("bay", "Bay Area")]
+    static let cities: [(key: String, label: String)] = [("nyc", "New York"), ("bay", "Bay Area"), ("la", "Los Angeles")]
     /// Bounding box per city (matches backend `CITY_META` bounds). Used to turn
     /// a GPS fix into a city key and by Find to ignore mis-geocoded pins.
     static let cityBounds: [String: (minLat: Double, maxLat: Double, minLng: Double, maxLng: Double)] = [
         "nyc": (40.45, 41.0, -74.3, -73.65),
         "bay": (36.95, 38.65, -123.15, -121.45),
+        "la": (33.40, 34.45, -118.95, -117.40),  // LA County + Orange County
     ]
     private static let selectedCityKey = "selected_city"
     private static let defaultCity = "nyc"

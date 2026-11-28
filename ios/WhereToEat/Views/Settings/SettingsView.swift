@@ -161,7 +161,7 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.large)
     }
 
-    private static let citySubtitles = ["nyc": "5 boroughs", "bay": "SF & the Bay"]
+    private static let citySubtitles = ["nyc": "5 boroughs", "bay": "SF & the Bay", "la": "LA & Orange County"]
 
     private static func cityLabel(_ key: String) -> String? {
         WeeklyRestaurantService.cities.first { $0.key == key }?.label

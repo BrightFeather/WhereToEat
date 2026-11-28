@@ -52,8 +52,18 @@ struct FindView: View {
         span: MKCoordinateSpan(latitudeDelta: 0.75, longitudeDelta: 0.65)
     )
 
+    /// Central LA + San Gabriel Valley + Westside + northern Orange County.
+    private static let laRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 33.95, longitude: -118.15),
+        span: MKCoordinateSpan(latitudeDelta: 0.75, longitudeDelta: 0.85)
+    )
+
     private static func cityRegion(_ key: String) -> MKCoordinateRegion {
-        key == "bay" ? bayRegion : nycRegion
+        switch key {
+        case "bay": return bayRegion
+        case "la": return laRegion
+        default: return nycRegion
+        }
     }
 
     /// Region framing every restaurant of `key` inside its plausibility box,

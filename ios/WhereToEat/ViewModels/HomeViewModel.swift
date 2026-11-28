@@ -1110,7 +1110,9 @@ final class HomeViewModel: ObservableObject {
         "Manhattan", "Brooklyn", "Queens", "Bronx", "The Bronx",
         "Staten Island", "New Jersey", "Hong Kong", "China", "Outside NYC",
         // Bay Area regions (city `bay`; backend cityRegions.ts)
-        "San Francisco", "East Bay", "Peninsula", "South Bay", "North Bay"
+        "San Francisco", "East Bay", "Peninsula", "South Bay", "North Bay",
+        // Los Angeles regions (city `la`; "South Bay" is shared with bay)
+        "Los Angeles", "San Gabriel Valley", "Westside", "Orange County"
     ]
 
     func normalizedBorough(_ raw: String?) -> String {
