@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5FBAD1E10000000000B001E1 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 5FBAD1E00000000000B001E0 /* GoogleSignIn */; };
 		5F132D002F7B81BA002C2B2B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F132CFF2F7B81BA002C2B2B /* Assets.xcassets */; };
 		5F132D032F7B81BA002C2B2B /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F132D022F7B81BA002C2B2B /* Preview Assets.xcassets */; };
 		5F132D0E2F7B81BA002C2B2B /* WhereToEatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D0D2F7B81BA002C2B2B /* WhereToEatTests.swift */; };
@@ -105,6 +106,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5FBAD1E20000000000B001E2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1B12BDD5A8AE87153CB24FB9 /* XHSImportPreviewView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = XHSImportPreviewView.swift; sourceTree = "<group>"; };
 		5F132CF82F7B81B9002C2B2B /* WhereToEat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhereToEat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5F132CFB2F7B81B9002C2B2B /* WhereToEatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereToEatApp.swift; sourceTree = "<group>"; };
@@ -197,6 +199,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5FBAD1E10000000000B001E1 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -251,6 +254,7 @@
 				5F132CFD2F7B81B9002C2B2B /* ContentView.swift */,
 				5F132CFF2F7B81BA002C2B2B /* Assets.xcassets */,
 				5F132D042F7B81BA002C2B2B /* WhereToEat.entitlements */,
+				5FBAD1E20000000000B001E2 /* Info.plist */,
 				5F132D012F7B81BA002C2B2B /* Preview Content */,
 				5FBAD1400000000000B00140 /* Fraunces-VF.ttf */,
 				5FBAD1500000000000B00150 /* Fraunces-Italic-VF.ttf */,
@@ -506,6 +510,9 @@
 			dependencies = (
 			);
 			name = WhereToEat;
+			packageProductDependencies = (
+				5FBAD1E00000000000B001E0 /* GoogleSignIn */,
+			);
 			productName = WhereToEat;
 			productReference = 5F132CF82F7B81B9002C2B2B /* WhereToEat.app */;
 			productType = "com.apple.product-type.application";
@@ -862,6 +869,7 @@
 				DEVELOPMENT_TEAM = A5Z66YNTC8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WhereToEat/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "WhereToEat NYC uses your location to find restaurants near you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WhereToEat uses your location to find restaurants near you.";
@@ -894,6 +902,7 @@
 				DEVELOPMENT_TEAM = A5Z66YNTC8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WhereToEat/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "WhereToEat NYC uses your location to find restaurants near you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WhereToEat uses your location to find restaurants near you.";
@@ -1033,6 +1042,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5FBAD1E00000000000B001E0 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5F70C9032FA079F9002632F4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5F132CF02F7B81B9002C2B2B /* Project object */;
 }

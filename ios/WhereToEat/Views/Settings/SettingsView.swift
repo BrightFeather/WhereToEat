@@ -218,7 +218,7 @@ struct SettingsView: View {
             Button {
                 authGateDismissed = false
             } label: {
-                Label("Sign in with Apple", systemImage: "person.crop.circle.badge.plus")
+                Label("Sign in with Apple or Google", systemImage: "person.crop.circle.badge.plus")
             }
         }
     }

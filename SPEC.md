@@ -60,7 +60,7 @@ Defaults for the fields an onboarding flow would have collected come from `UserP
 
 ## User Identity & Per-User Data
 
-Real Apple / Google Sign-In is deferred (see `TASKS.md` § A1–A23). Until it lands, the backend identifies each client by an **anonymous device-scoped UUID**. This is enough to persist reservations and favorites server-side without a login screen, and it leaves a clean upgrade path — swap the anonymous id for the real Apple/Google subject id during sign-in.
+Apple and Google Sign-In are both wired (see § Sign-in providers below). Signing in is optional: guests ("Continue as guest") stay on an **anonymous device-scoped UUID**. This is enough to persist reservations and favorites server-side without a login screen, and it leaves a clean upgrade path — swap the anonymous id for the real Apple/Google subject id during sign-in.
 
 ### iOS: `IdentityService`
 
@@ -96,10 +96,21 @@ User-scoped tables are defined in `backend/scripts/migrate.ts` (SQLite) and `bac
 - **Favorites** share the same pattern; only the storage endpoints ship today (UI for remote-synced favorites is deferred until auth lands).
 - **Seen-today** is deliberately device-local (`SeenService` in `UserDefaults`) and is **not** synced — cross-device repeat cards within a single day are an acceptable tradeoff versus per-swipe DB writes. TTL is 1 day by construction (keys are stamped with the ISO date; older keys GC'd on next read).
 
+### Sign-in providers
+
+`LoginView` shows **Sign in with Apple** (native `ASAuthorizationController`) and **Continue with Google** (`GoogleSignIn-iOS` SDK 7.x via SPM, `GoogleSignInIntegration.swift`), then "Continue as guest". Settings → Account shows "Sign in with Apple or Google" for guests, which re-opens the same login gate.
+
+Both providers end in the same exchange: `AuthService.exchange(provider:idToken:displayName:)` → `POST /api/auth/login { provider, idToken, anonymousUserId, displayName? }`. The backend verifies the token against the provider's JWKS, upserts the `users` row (by `apple_sub` / `google_sub`), migrates `user_reservations` + `user_favorites` from `anonymousUserId` to the verified id, and returns `{userId, displayName, email, emailVerified, provider}`. iOS swaps the Keychain id for `userId` and sets `AuthService.state = .authenticated(…, provider: "apple" | "google")`.
+
+Google config:
+- iOS OAuth client id `617615737877-0pdsb8nrjnosdhnsebn794501t1o5m52.apps.googleusercontent.com` (GCP project shown to users as "WhereToEat App"). Lives in `WhereToEat/WhereToEat/Info.plist` (merged into the generated plist via `INFOPLIST_FILE`) as `GIDClientID`, plus the reversed id `com.googleusercontent.apps.617615737877-0pdsb8nrjnosdhnsebn794501t1o5m52` as a `CFBundleURLTypes` scheme. The OAuth redirect is forwarded with `.onOpenURL { GIDSignIn.handle }` in `WhereToEatApp`.
+- Backend: `GOOGLE_IOS_CLIENT_IDS` (comma-separated accepted `aud` values) must contain that client id. Apple uses `APPLE_BUNDLE_IDS`.
+- Cancelling the Google sheet is silent (no error banner). Sign out also calls `GIDSignIn.signOut()` so the next Google sign-in shows the account picker.
+
 ### Why an anonymous id today
 
 - Unblocks "cross-device booking list" + "backend-truth bookings" now, with zero auth UI surface.
-- When Apple / Google Sign-In ships, the login flow performs:
+- When the user signs in with Apple / Google, the login flow performs:
   1. Verify the identity token (JWKS).
   2. `UPDATE users SET id = :subjectId WHERE id = :anonymousId` (single transaction, cascades via FK in Neon).
   3. Client swaps the Keychain id for the subject id, keeping future `X-User-Id` headers stable.
@@ -690,7 +701,7 @@ Reachable from the Home toolbar's gear icon. Form sections in order:
 4. **Reservations** — default party-size stepper + "Only show bookable restaurants" toggle.
 5. **Recommendation Sources** — per-source toggles for `xiaohongshu` / `eater` / `resy_blog`; persisted on `UserProfile.discoverySources` (drives both Home picks and the Discovery deck — see § Deck filter sources).
 6. **Display** — "Show Google ratings" toggle (when off, ratings hide from cards + detail).
-7. **Account** — when signed in, shows provider + name + a destructive Sign Out button (resets the Keychain UUID, re-prompts the login gate). When anonymous, shows a Sign-in shortcut.
+7. **Account** — when signed in, shows provider + name + a destructive Sign Out button (resets the Keychain UUID, re-prompts the login gate). When anonymous, shows a "Sign in with Apple or Google" shortcut that re-opens the login gate.
 8. **Send Feedback** — dedicated row that pushes `FeedbackView` (multiline `TextEditor` + optional reply-to email field prefilled from `UserDefaults["auth.email"]`). Submits to `POST /api/feedback`, which sends an email to `prompt.and.ship@gmail.com` via Resend with the `users.email` row as the `reply_to` fallback. Body also carries `appVersion` / `deviceModel` / `iosVersion` for triage.
 9. **About** — version (`CFBundleShortVersionString`).
 
@@ -750,7 +761,7 @@ vercel --prod --yes    # deploy
 SQLite at `backend/data/wheretoeat.db` is the dev source of truth — write/test there first, then push.
 
 **Vercel env vars.**
-- Set (production, as of 2026-05-02): `GOOGLE_PLACES_API_KEY`, `YELP_API_KEY`, `RESY_EMAIL`; Neon `WHERE_TO_EAT_DATABASE_URL` + family (auto-injected); Blob `RESTAURANT_PHOTOS_READ_WRITE_TOKEN` (auto-injected); `DEEP_SEEK_API` (DeepSeek-V4-Pro — was Gemini's `LLM_API_KEY`); optional `DEEPSEEK_MODEL` override; `CRON_SECRET`; `XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID` (sourced from `~/.xiaohongshu-cli/cookies.json` — see memory `project_xhs_vercel_auth.md`).
+- Set (production, as of 2026-05-02): `GOOGLE_PLACES_API_KEY`, `YELP_API_KEY`, `RESY_EMAIL`; Neon `WHERE_TO_EAT_DATABASE_URL` + family (auto-injected); Blob `RESTAURANT_PHOTOS_READ_WRITE_TOKEN` (auto-injected); `DEEP_SEEK_API` (DeepSeek-V4-Pro — was Gemini's `LLM_API_KEY`); optional `DEEPSEEK_MODEL` override; `CRON_SECRET`; `XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID` (sourced from `~/.xiaohongshu-cli/cookies.json` — see memory `project_xhs_vercel_auth.md`); `APPLE_BUNDLE_IDS`. **Needed for Google Sign-In (not yet set as of 2026-11-27):** `GOOGLE_IOS_CLIENT_IDS=617615737877-0pdsb8nrjnosdhnsebn794501t1o5m52.apps.googleusercontent.com`.
 - **Still missing** (only needed if endpoints below are reactivated): `LLM_MODEL` (defaults to `gemini-2.5-flash` if unset), `RESY_PASSWORD` + `ANTHROPIC_API_KEY` (only if reservation/legacy paths come back). Stripe keys — deferred until the deposit flow is restored.
 - **`xsec_token` is single-use.** Each XHS share link carries a token consumed on first read; testing the deployed `import-xhs` requires a fresh token per attempt (pull via `xhs search "纽约美食" --json`). See memory `project_xhs_xsec_token_singleuse.md`.
 
