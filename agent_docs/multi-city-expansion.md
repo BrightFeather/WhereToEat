@@ -54,7 +54,7 @@ The scheduled task `multi-city-ingest` runs at 09:00 and 15:00 local. Each run d
   - Add a `MAX_NEW_READS` cap in the read phase.
   - Unit-check `regionForLocality('la', …)` for a few localities.
   - Then run the count: `CITY=la MAX_SCROLLS=15 npx ts-node -T scripts/xhs-browser-ingest.ts`. Log per-keyword counts and the total.
-- [ ] **L2** Read `la`: `CITY=la MODE=read MAX_POSTS=150` (≤150 new reads). Log read/failed/too-old counts.
+- [x] **L2** Read `la`: `CITY=la MODE=read MAX_POSTS=150` (≤150 new reads). Log read/failed/too-old counts.
 - [ ] **L3** Pipeline `la`: `CITY=la POSTS_FILE=data/xhs-raw/posts-la.json EXTRACT_CONCURRENCY=10 npx ts-node scripts/test-pipeline.ts`.
   - Verify in local SQLite: rows, region distribution, fill rates (maps, cuisine, features, coords, price, rating), out-of-area rejections.
   - Check the local API: `npx ts-node scripts/local-server.ts`, then GET `/api/restaurants/weekly?city=la` and `/api/locations?city=la`.
@@ -69,6 +69,7 @@ chi, hou, phx, phl, sat, sd, dfw. Their keyword drafts are in the table above. W
 
 ## Log
 
+- 2026-11-27 (manual, owner asked to run early) — **L2 done.** Read the top 150 of 542 LA candidates (search ❤ ≥198) → `data/xhs-raw/posts-la.json`: 150 ok, 0 failed, 0 older than 6 months. The first attempt (17:00) read 143 new notes; it hit one captcha around note 20, which cleared within the wait window, then the process was killed when the session ended at note ~143 before writing the posts file. The 21:54 re-run served 143 from the note cache and read 7 new → 150 new reads total for L2. Next: L3 pipeline.
 - 2026-11-27 (15:00 run) — **L1 done.** `cityRegions.ts`: `la` regions Los Angeles / San Gabriel Valley / Westside / South Bay / Orange County / Other (catch-all for in-bounds unmapped localities, so `weekly.ts → filterToCity` keeps them); locality "Los Angeles" is split by Places neighborhood (Venice/Westwood/Sawtelle… → Westside, San Pedro/Wilmington/Harbor City → South Bay, else Los Angeles). `CITY_META.la`: displayName "Los Angeles (including Orange County)" (so the LLM doesn't treat Irvine posts as off-topic), suffixes "CA" / "Los Angeles, CA", bounds lat 33.40–34.45, lng −118.95…−117.40. `placesEnricher` now uses the locality→region path for every non-NYC city (bay behaviour unchanged). Ingest script: `la` keywords + `MAX_NEW_READS` (default 150, cached notes don't count). No LA keyword needed the ambiguity filter. Region unit check: 11/11 LA cases + bay spot checks OK. **Count** (`MAX_SCROLLS=15`, ≥50❤, last 6 months): 洛杉矶美食 100 (scroll cap, lowest ❤137) · 洛杉矶探店 100 (cap, ❤100) · 洛杉矶新店 120 · 洛杉矶餐厅 161 · 洛杉矶必吃 80 (cap, ❤137) · 尔湾美食 120 (first attempt timed out clicking the 最多点赞 filter tag; retried alone and merged into the file) · 圣盖博美食 83 · 洛杉矶约会餐厅 80 → **542 unique** (≥100❤ 335, ≥500❤ 35, ≥1000❤ 13; 0 older than the cutoff). The 150th candidate has ❤198, so L2's 150 reads cover everything above that. No captcha; 9 searches, 0 note reads.
 - 2026-11-27 — Owner narrowed scope to **Los Angeles only**; other cities on hold. Queue rewritten as L1–L4.
 - 2026-11-27 — Plan written; scheduled task `multi-city-ingest` created (09:00 + 15:00 daily). Same day, shipped separately: "This week's picks" follows GPS unless a city is picked on the Pick page (TestFlight build 37).
