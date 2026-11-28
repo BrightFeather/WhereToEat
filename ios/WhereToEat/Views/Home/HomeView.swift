@@ -14,6 +14,7 @@ struct HomeView: View {
     @StateObject private var pickVM: DiscoveryViewModel
     @EnvironmentObject private var locationService: LocationService
     @State private var selectedTab: Int = 0
+    @State private var luckyResult: HomeViewModel.LuckyResult?
 
     init() {
         // Pick tab reuses the existing Discovery view model. Lifted here as
@@ -46,6 +47,7 @@ struct HomeView: View {
                         }
                     }
             }
+            .themedTabBar()
             .tabItem { Label("Home", systemImage: "house.fill") }
             .tag(0)
 
@@ -54,6 +56,7 @@ struct HomeView: View {
                 DiscoveryContainerView(viewModel: pickVM)
                     .environmentObject(customListVM)
             }
+            .themedTabBar()
             .tabItem { Label("Pick", systemImage: "flame.fill") }
             .tag(1)
 
@@ -63,6 +66,7 @@ struct HomeView: View {
                     .environmentObject(customListVM)
                     .navigationBarHidden(true)
             }
+            .themedTabBar()
             .tabItem { Label("Find", systemImage: "map.fill") }
             .tag(2)
 
@@ -71,6 +75,7 @@ struct HomeView: View {
                     .navigationTitle("My List")
                     .environmentObject(customListVM)
             }
+            .themedTabBar()
             .tabItem { Label("My List", systemImage: "heart.text.square") }
             .tag(3)
         }
@@ -139,17 +144,26 @@ struct HomeView: View {
                     picksSection
                 }
 
-                // Single gradient CTA into the swipe deck — always rendered so
-                // the user can reach Discovery even when the weekly pipeline
-                // is rebuilding (weeklyCount = 0) or the source-filter set is
-                // empty. Discovery itself shows the appropriate empty/
-                // building state.
-                findAnotherRestaurantButton
-                    .padding(.horizontal)
+                // Trending now — restaurants from the most recent popular
+                // 小红书 posts. Hidden when fewer than 4 qualify.
+                let trending = viewModel.trendingPicks
+                if !trending.isEmpty {
+                    trendingSection(trending)
+                }
 
-                // Stats — only when we actually have a count to show.
+                // Stats — only when we actually have a count to show. The
+                // "🍽 N picks" pill is also the Home entry into the swipe deck
+                // (the old gradient "Swipe through all N picks" CTA is gone).
                 if viewModel.weeklyCount > 0 {
                     statsRow
+                }
+
+                // I'm feeling lucky — last thing on Home.
+                if viewModel.luckyAvailable {
+                    LuckyCard(viewModel: viewModel) {
+                        luckyResult = viewModel.rollLucky()
+                    }
+                    .padding(.horizontal)
                 }
             }
             .padding(.vertical)
@@ -167,54 +181,39 @@ struct HomeView: View {
             await viewModel.pullToRefresh()
         }
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $luckyResult) { result in
+            LuckyRollView(viewModel: viewModel, result: result)
+                .environmentObject(customListVM)
+        }
+        .onReceive(customListVM.$restaurants) { viewModel.savedRestaurants = $0 }
     }
 
-    // MARK: - Gradient CTA into the swipe deck
+    // MARK: - Trending now
 
-    private var findAnotherRestaurantButton: some View {
-        // Used to push Discovery via NavigationStack; now jumps to the Pick
-        // tab via the `.switchToPick` notification bus so the Discovery deck
-        // is reachable as a top-level tab.
-        Button {
-            NotificationCenter.default.post(name: .switchToPick, object: nil)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.subheadline).fontWeight(.semibold)
-                Text(ctaLabel)
-                    .font(.subheadline).fontWeight(.semibold)
-                Spacer()
-                Image(systemName: "arrow.right")
-                    .font(.subheadline).fontWeight(.semibold)
+    private func trendingSection(_ picks: [HomeViewModel.TrendingPick]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Text("Trending now")
+                    .font(.fraunces(.title3, weight: .semibold))
+                    .foregroundColor(.primary)
+                Image(systemName: "flame.fill")
+                    .foregroundColor(LuckyCard.orange)
             }
-            .foregroundColor(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .background(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.45, green: 0.20, blue: 0.95),
-                        Color(red: 0.98, green: 0.48, blue: 0.10)
-                    ],
-                    startPoint: .leading, endPoint: .trailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: Color(red: 0.45, green: 0.20, blue: 0.95).opacity(0.35),
-                    radius: 10, y: 4)
-        }
-        .buttonStyle(.plain)
-    }
+            .padding(.horizontal)
 
-    /// "Swipe through all N picks" when we have a count; bookings-only fallback
-    /// keeps the shorter phrasing from before.
-    private var ctaLabel: String {
-        let total = viewModel.weeklyCount
-        if viewModel.hasUpcomingReservations {
-            return total > 0 ? "Swipe through \(total) more picks" : "Find another restaurant"
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(picks) { pick in
+                        NavigationLink(destination: detailDestination(for: pick.restaurant)) {
+                            TrendingCard(pick: pick)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+            }
         }
-        return total > 0 ? "Swipe through all \(total) picks" : "Find another restaurant"
     }
 
     // MARK: - This week's picks
@@ -282,10 +281,15 @@ struct HomeView: View {
     private static func configureTabBarAppearance() {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor { trait in
-            trait.userInterfaceStyle == .dark
-                ? UIColor(red: 0.12, green: 0.07, blue: 0.04, alpha: 1.0)
-                : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
+        // Follows the theme like the page: cream in light, charcoal in dark.
+        // Unselected items use a mid gray that reads on both.
+        appearance.backgroundColor = .tabBarFill
+        let itemGray = UIColor(red: 0.56, green: 0.56, blue: 0.58, alpha: 1.0)   // #8E8E93
+        for layout in [appearance.stackedLayoutAppearance,
+                       appearance.inlineLayoutAppearance,
+                       appearance.compactInlineLayoutAppearance] {
+            layout.normal.iconColor = itemGray
+            layout.normal.titleTextAttributes = [.foregroundColor: itemGray]
         }
         appearance.shadowColor = .clear   // drop the default 1pt top hairline
         UITabBar.appearance().standardAppearance = appearance
@@ -298,13 +302,13 @@ struct HomeView: View {
         if let inlineFont = UIFont(name: "Fraunces", size: 24) {
             nav.titleTextAttributes = [
                 .font: inlineFont,
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.ink,
             ]
         }
         if let largeFont = UIFont(name: "Fraunces", size: 34) {
             nav.largeTitleTextAttributes = [
                 .font: largeFont,
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.ink,
             ]
         }
         UINavigationBar.appearance().standardAppearance = nav
@@ -320,20 +324,21 @@ extension Color {
     /// `homeBgMid` cream wash now via `WarmGradientBackground`.
     static let homeBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.18, green: 0.09, blue: 0.05, alpha: 1.0)
+            ? UIColor(red: 0.192, green: 0.157, blue: 0.133, alpha: 1.0)   // raised #312822
             : UIColor(red: 1.00, green: 0.87, blue: 0.73, alpha: 1.0)
     })
     /// Background wash used by Home, My List, and Welcome — a calm cream that
     /// reads as "warm" without competing with the cards layered on top.
     static let homeBgMid = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.12, green: 0.07, blue: 0.04, alpha: 1.0)
+            ? UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1.0)   // Low light page #14110F
             : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)   // cream #FFF0D9
     })
-    /// Reserved for future accent use.
+    /// Card fill on the Home / My List wash. In dark mode it is *lighter*
+    /// than the page (#2A231E on #14110F) so cards read as raised.
     static let homeBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.05, green: 0.03, blue: 0.02, alpha: 1.0)
+            ? UIColor(red: 0.165, green: 0.137, blue: 0.118, alpha: 1.0)   // card #2A231E
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)
     })
 
@@ -343,17 +348,17 @@ extension Color {
     /// the detail view to both the Home cream and the Discovery mint.
     static let detailBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.20, green: 0.10, blue: 0.05, alpha: 1.0)   // warm cocoa
+            ? UIColor(red: 0.192, green: 0.157, blue: 0.133, alpha: 1.0)   // #312822
             : UIColor(red: 1.00, green: 0.86, blue: 0.71, alpha: 1.0)   // warm peach #FFDBB5
     })
     static let detailBgMid = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.10, green: 0.07, blue: 0.05, alpha: 1.0)
+            ? UIColor(red: 0.102, green: 0.086, blue: 0.075, alpha: 1.0)   // #1A1613
             : UIColor(red: 1.00, green: 0.95, blue: 0.87, alpha: 1.0)   // cream #FFF1DD
     })
     static let detailBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.06, green: 0.10, blue: 0.09, alpha: 1.0)
+            ? UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1.0)   // #14110F
             : UIColor(red: 0.88, green: 0.95, blue: 0.92, alpha: 1.0)   // soft mint #E1F2EA
     })
 
@@ -363,7 +368,7 @@ extension Color {
     /// against the cream wash. One token = one tweak when palette evolves.
     static let cardBorder = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.55, green: 0.42, blue: 0.25, alpha: 0.45)
+            ? UIColor(red: 1.00, green: 0.94, blue: 0.86, alpha: 0.07)   // faint warm edge
             : UIColor(red: 0.62, green: 0.42, blue: 0.18, alpha: 0.22)
     })
 
@@ -373,14 +378,70 @@ extension Color {
     /// card photo and the swipe pills stay neutral.
     static let discoveryBgTop = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.07, green: 0.13, blue: 0.12, alpha: 1.0)   // dark forest
+            ? UIColor(red: 0.102, green: 0.086, blue: 0.075, alpha: 1.0)   // #1A1613
             : UIColor(red: 0.85, green: 0.94, blue: 0.91, alpha: 1.0)   // soft mint #D9F0E8
     })
     static let discoveryBgBottom = Color(UIColor { trait in
         trait.userInterfaceStyle == .dark
-            ? UIColor(red: 0.05, green: 0.06, blue: 0.06, alpha: 1.0)
+            ? UIColor(red: 0.078, green: 0.067, blue: 0.059, alpha: 1.0)   // #14110F
             : UIColor(red: 1.00, green: 0.98, blue: 0.93, alpha: 1.0)   // near-white cream
     })
+
+    /// Fill for chips, pills and small buttons. Light: plain white (iOS
+    /// `systemBackground`). Dark: a warm charcoal card, because pure black
+    /// sits *below* the #161210 page and reads as a hole.
+    static let surface = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.165, green: 0.137, blue: 0.118, alpha: 1.0)   // #2A231E
+            : UIColor.systemBackground.resolvedColor(with: trait)
+    })
+    /// Find's bottom list panel. Light: the cream page color (unchanged).
+    /// Dark: the card color, so the restaurant list reads as a raised sheet
+    /// over the map instead of a slab of page background.
+    static let listPanel = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.165, green: 0.137, blue: 0.118, alpha: 1.0)   // #2A231E
+            : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)      // cream #FFF0D9
+    })
+    /// Tab bar fill. Light: cream (same as the page). Dark: #1A1613, a hair
+    /// above the page so the bar reads as its own layer.
+    static let tabBarFill = Color(UIColor.tabBarFill)
+
+    /// Placeholder / inset fill. Light: `systemGray6`. Dark: #2E2621.
+    static let surfaceMuted = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.227, green: 0.188, blue: 0.165, alpha: 1.0)   // #3A302A
+            : UIColor.systemGray6.resolvedColor(with: trait)
+    })
+}
+
+extension View {
+    /// Themed tab bar on every screen of a tab (cream in light, #1A1613 in
+    /// dark). The UIKit appearance proxy alone isn't enough:
+    /// SwiftUI's `Map` (Find) and some pushed views (restaurant detail) put
+    /// their own material behind the tab bar, which showed as system gray.
+    func themedTabBar() -> some View {
+        self
+            .toolbarBackground(Color.tabBarFill, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
+    }
+
+}
+
+extension UIColor {
+    /// Navigation-bar title color: warm off-white #EDE4D8 in dark instead of
+    /// pure white; system label in light. Not set app-wide, because a root
+    /// `foregroundStyle` would also recolor every button's tint.
+    static let ink = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.929, green: 0.894, blue: 0.847, alpha: 1.0)   // #EDE4D8
+            : UIColor.label.resolvedColor(with: trait)
+    }
+    static let tabBarFill = UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.102, green: 0.086, blue: 0.075, alpha: 1.0)   // #1A1613
+            : UIColor(red: 1.00, green: 0.94, blue: 0.85, alpha: 1.0)      // cream #FFF0D9
+    }
 }
 
 /// Shared warm wash used as the background on Home and My List. Flat fill of
@@ -444,11 +505,17 @@ private struct HomePickCard: View {
             .joined(separator: " · ")
     }
 
+    /// Slot label colors. Dark mode uses softened versions so they don't
+    /// glow on the Low light page.
     private var labelAccent: Color {
         switch pick.label {
-        case .topPick:     return Color(red: 0.98, green: 0.48, blue: 0.10)   // orange
-        case .newThisWeek: return Color(red: 0.20, green: 0.65, blue: 0.35)   // green
-        case .hiddenGem:   return Color(red: 0.45, green: 0.20, blue: 0.95)   // purple
+        case .topPick:     return .accentColor   // orange
+        case .newThisWeek: return Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.56, green: 0.78, blue: 0.60, alpha: 1)    // #8FC79A
+            : UIColor(red: 0.20, green: 0.65, blue: 0.35, alpha: 1) })
+        case .hiddenGem:   return Color(UIColor { $0.userInterfaceStyle == .dark
+            ? UIColor(red: 0.73, green: 0.65, blue: 0.94, alpha: 1)    // #B9A6F0
+            : UIColor(red: 0.45, green: 0.20, blue: 0.95, alpha: 1) })
         }
     }
 
@@ -510,19 +577,30 @@ private struct StatPill: View {
     let value: String
     let label: String
 
+    /// Same card language as the pick cards (cream fill, warm hairline, soft
+    /// shadow) so the pills read as tappable cards on the cream page instead
+    /// of flat gray blocks. The chevron says "this opens something".
     var body: some View {
-        HStack(spacing: 6) {
-            Text(emoji).font(.caption)
+        HStack(spacing: 8) {
+            Text(emoji).font(.subheadline)
             Text(value)
-                .font(.subheadline).fontWeight(.bold)
+                .font(.headline)
+                .foregroundColor(.primary)
             Text(label)
-                .font(.caption2).foregroundColor(.secondary)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.caption).fontWeight(.semibold)
+                .foregroundColor(.secondary.opacity(0.6))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(Color.homeBgBottom)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.cardBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
     }
 }
 
@@ -662,8 +740,6 @@ struct DiscoveryWrapper: View {
 struct DiscoveryContainerView: View {
     @ObservedObject var viewModel: DiscoveryViewModel
     @EnvironmentObject private var customListVM: CustomListViewModel
-    @ObservedObject private var weekly = WeeklyRestaurantService.shared
-    @State private var showCityPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -759,167 +835,12 @@ struct DiscoveryContainerView: View {
         // so the title reads as a proper page header without a `.large`
         // mode that would push the rest of the content down.
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { cityPicker }
-        }
         .sheet(item: $viewModel.likedRestaurant) { restaurant in
             NavigationStack {
                 RestaurantDetailView(restaurant: restaurant)
                     .environmentObject(customListVM)
             }
         }
-    }
-
-    /// Top-left city switcher. A compact chip, half-transparent at rest so it
-    /// doesn't compete with the "This week" title, that opens a styled
-    /// popover card (`CityPickerCard`). The whole app (Home, Pick, Find)
-    /// follows the choice. Defaults to New York.
-    private var cityPicker: some View {
-        let label = WeeklyRestaurantService.cities.first { $0.key == weekly.activeCity }?.label ?? "New York"
-        return Button { showCityPicker = true } label: {
-            HStack(spacing: 5) {
-                Image(systemName: weekly.isAutoCity ? "location.circle.fill" : "mappin.circle.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                Text(label)
-                    .font(.subheadline.weight(.semibold))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
-            }
-            .foregroundColor(.primary)
-            .opacity(showCityPicker ? 1 : 0.5)
-            .animation(.easeOut(duration: 0.15), value: showCityPicker)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("City: \(label). Double-tap to change.")
-        .popover(isPresented: $showCityPicker, arrowEdge: .top) {
-            CityPickerCard(
-                selected: weekly.activeCity,
-                isAuto: weekly.isAutoCity,
-                gpsCityLabel: weekly.gpsCity.flatMap { key in WeeklyRestaurantService.cities.first { $0.key == key }?.label },
-                onUseLocation: {
-                    weekly.useCurrentLocation()
-                    showCityPicker = false
-                },
-                onSelect: { key in
-                    weekly.selectCity(key)
-                    showCityPicker = false
-                }
-            )
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-}
-
-// MARK: - City picker card (Pick-page popover)
-
-/// Popover content for the Pick-page city switcher: a compact row per city
-/// with a landmark emoji tile (🗽 / 🌉), name, short subtitle and a check on
-/// the current city.
-private struct CityPickerCard: View {
-    let selected: String
-    /// Following GPS ("Current location") rather than an explicit pick.
-    let isAuto: Bool
-    /// City the GPS fix falls in, if any supported one.
-    let gpsCityLabel: String?
-    let onUseLocation: () -> Void
-    let onSelect: (String) -> Void
-
-    private struct CityStyle {
-        let emoji: String
-        let subtitle: String
-        let tint: Color
-    }
-
-    private static let styles: [String: CityStyle] = [
-        "nyc": CityStyle(emoji: "🗽", subtitle: "5 boroughs", tint: Color(red: 0.95, green: 0.45, blue: 0.20)),
-        "bay": CityStyle(emoji: "🌉", subtitle: "SF & the Bay", tint: Color(red: 0.25, green: 0.50, blue: 0.95)),
-    ]
-
-    var body: some View {
-        VStack(spacing: 2) {
-            locationRow
-            Divider().padding(.horizontal, 8).padding(.vertical, 2)
-            ForEach(WeeklyRestaurantService.cities, id: \.key) { city in
-                row(key: city.key, label: city.label)
-            }
-        }
-        .padding(6)
-        .frame(width: 220)
-    }
-
-    /// "Current location": follow GPS. Subtitle names the detected city, or
-    /// says we fall back to New York when the fix isn't in a supported city.
-    private var locationRow: some View {
-        let tint = Color.accentColor
-        return Button(action: onUseLocation) {
-            HStack(spacing: 10) {
-                Image(systemName: "location.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(tint)
-                    .frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(0.12)))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Current location")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                    Text(gpsCityLabel.map { "Near \($0)" } ?? "Not near a city yet · New York")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 6)
-                if isAuto {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(tint)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(isAuto ? tint.opacity(0.08) : Color.clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Current location" + (isAuto ? ", selected" : ""))
-    }
-
-    private func row(key: String, label: String) -> some View {
-        let style = Self.styles[key] ?? CityStyle(emoji: "📍", subtitle: "", tint: .gray)
-        let isSelected = !isAuto && key == selected
-        return Button { onSelect(key) } label: {
-            HStack(spacing: 10) {
-                Text(style.emoji)
-                    .font(.system(size: 20))
-                    .frame(width: 34, height: 34)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(style.tint.opacity(0.15))
-                    )
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                    Text(style.subtitle)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                Spacer(minLength: 6)
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(style.tint)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(isSelected ? style.tint.opacity(0.08) : Color.clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label + (isSelected ? ", selected" : ""))
     }
 }
 
@@ -931,7 +852,7 @@ private struct FilterChip: View {
     let action: () -> Void
 
     // Bold solid purple — distinct from cuisine (orange) and neighborhood (blue).
-    private static let selectedFill = Color(red: 0.45, green: 0.20, blue: 0.95)
+    private static let selectedFill = Color.accentColor   // one accent across tabs (was purple)
 
     var body: some View {
         Button(action: action) {
@@ -940,7 +861,7 @@ private struct FilterChip: View {
                 .foregroundColor(isSelected ? .white : .primary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? Self.selectedFill : Color(.systemBackground))
+                .background(isSelected ? Self.selectedFill : Color.surface)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
@@ -971,7 +892,7 @@ private struct CuisineChip: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .frame(minWidth: 44)
-                .background(isSelected ? Self.boldOrange : Color(.systemBackground))
+                .background(isSelected ? Self.boldOrange : Color.surface)
                 .clipShape(Capsule())
                 .overlay(
                     Capsule()
@@ -1000,7 +921,7 @@ private struct NeighborhoodChip: View {
                 .background(
                     isSelected
                         ? AnyShapeStyle(Color.accentColor.opacity(0.85))
-                        : AnyShapeStyle(Color(.systemBackground))
+                        : AnyShapeStyle(Color.surface)
                 )
                 .overlay(
                     Capsule()

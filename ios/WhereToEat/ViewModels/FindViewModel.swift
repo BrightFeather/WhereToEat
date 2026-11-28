@@ -94,6 +94,59 @@ final class FindViewModel: ObservableObject {
         return withCoords.filter { regionContains(region, lat: $0.latitude!, lng: $0.longitude!) }
     }
 
+    /// One thing to draw on the map: a single restaurant pin, or a bubble
+    /// standing in for several nearby restaurants.
+    struct MapCluster: Identifiable {
+        let members: [WeeklyRestaurant]
+        let coordinate: CLLocationCoordinate2D
+        var id: String { members.count == 1 ? members[0].id : "cluster:" + members[0].id }
+        var isSingle: Bool { members.count == 1 }
+    }
+
+    /// Greedy screen-space clustering of `mappable`. `cellLat` / `cellLng`
+    /// are the size in degrees of the cluster radius (~60 pt) at the current
+    /// zoom. Pins are visited in deck-rank order; each joins the first
+    /// cluster whose seed is within one radius, else starts a new one. Unlike
+    /// a fixed grid, two bubbles can't end up touching across a cell edge.
+    /// The selected restaurant is never clustered, so the tapped pin stays.
+    func clusters(cellLat: Double, cellLng: Double) -> [MapCluster] {
+        let pins = mappable
+        guard cellLat > 0, cellLng > 0 else {
+            return pins.map { MapCluster(members: [$0], coordinate: Self.coordinate(of: $0)) }
+        }
+        var seeds: [(lat: Double, lng: Double)] = []
+        var groups: [[WeeklyRestaurant]] = []
+        var result: [MapCluster] = []
+        for r in pins {
+            if r.id == selectedRestaurantId {
+                result.append(MapCluster(members: [r], coordinate: Self.coordinate(of: r)))
+                continue
+            }
+            let lat = r.latitude!, lng = r.longitude!
+            if let i = seeds.firstIndex(where: { seed in
+                let dy = (lat - seed.lat) / cellLat
+                let dx = (lng - seed.lng) / cellLng
+                return dx * dx + dy * dy < 1
+            }) {
+                groups[i].append(r)
+            } else {
+                seeds.append((lat, lng))
+                groups.append([r])
+            }
+        }
+        for members in groups {
+            let lat = members.map { $0.latitude! }.reduce(0, +) / Double(members.count)
+            let lng = members.map { $0.longitude! }.reduce(0, +) / Double(members.count)
+            result.append(MapCluster(members: members,
+                                     coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)))
+        }
+        return result
+    }
+
+    private static func coordinate(of r: WeeklyRestaurant) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: r.latitude ?? 0, longitude: r.longitude ?? 0)
+    }
+
     /// Rows shown in the bottom panel. We show:
     ///   - coord-bearing rows whose pin falls inside the visible region
     ///   - rows without coords (always — they can't be filtered geographically

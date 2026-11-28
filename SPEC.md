@@ -54,13 +54,13 @@ Defaults for the fields an onboarding flow would have collected come from `UserP
 - **Override:** user pins a specific city in Settings → persists until cleared
 - **Eater city:** auto-resolved from current location or city override (no separate config)
 - Active override shown as banner in-app: *"Showing restaurants in New York, NY"*
-- **City picker (2026-11-26, GPS default 2026-11-27).** The weekly deck is per city: `nyc` (New York) or `bay` (SF Bay Area); more cities are on the way (`agent_docs/multi-city-expansion.md`). **The deck city, including Home's "This week's picks", is the city picked on the Pick page, else the user's GPS city, else New York.** The GPS city is the supported city whose bounding box contains the fix (`WeeklyRestaurantService.cityKey(for:)`). A fresh fix is requested every time the app comes to the foreground. The city is chosen explicitly with the **picker at the top left of the Pick page**: a 📍 "New York ⌄" chip at 50% opacity at rest (full while open). It opens a compact popover card (`CityPickerCard`). The first row is **"Current location"** ("Near <city>", or "Not near a city yet · New York"), which clears the explicit pick and follows GPS again. Then one row per city with a landmark emoji tile (🗽 New York · "5 boroughs", 🌉 Bay Area · "SF & the Bay") and a tinted row + check on the current one. An explicit pick is persisted in UserDefaults (`selected_city`); with none saved, the deck follows GPS. The Settings location override doesn't change the deck city. On a switch, `WeeklyRestaurantService.selectCity` resets to `building` and re-bootstraps. Home, Pick and Find all follow: Home and Pick clear their borough / neighborhood / cuisine chips, Home reloads the region list (`/api/locations?city=`), Pick rebuilds its deck, and the Find map frames the city: once the list loads it fits every restaurant whose coordinates fall inside the city's plausibility box, with the pins kept above the bottom panel. It zooms to the user's GPS position instead when that's inside the selected city. Bay Area regions fill the "borough" slot: San Francisco · East Bay · Peninsula · South Bay · North Bay. In-flight weekly requests for the previous city are discarded when they land, so a late response can't overwrite the new city's deck. The "Only show bookable restaurants" setting is skipped for a city with **no** Resy / OpenTable links at all (Bay Area before its booking backfill), so the deck isn't empty. See `agent_docs/bay-area-expansion.md`.
+- **City picker (2026-11-26, GPS default 2026-11-27).** The weekly deck is per city: `nyc` (New York) or `bay` (SF Bay Area); more cities are on the way (`agent_docs/multi-city-expansion.md`). **The deck city, including Home's "This week's picks", is the city picked in Settings → City, else the user's GPS city, else New York.** The GPS city is the supported city whose bounding box contains the fix (`WeeklyRestaurantService.cityKey(for:)`). A fresh fix is requested every time the app comes to the foreground. The city is chosen in **Settings → City** (moved from a Pick-page toolbar popover on 2026-11-27; the Pick page no longer has a city button). The section lists **"Current location"** ("Near <city>", or "Not near a supported city · New York"), which clears the explicit pick and follows GPS, then one row per city in `WeeklyRestaurantService.cities`, the cities that have data in the DB (today New York · "5 boroughs" and Bay Area · "SF & the Bay"; LA has no rows in prod yet so it isn't listed), with a check on the current choice. The old free-form "Change city" geocoder search (`CityOverrideView`) is removed so only DB cities can be picked; a legacy `locationOverride` from older builds shows as a row with Clear, and picking any city clears it. An explicit pick is persisted in UserDefaults (`selected_city`); with none saved, the deck follows GPS. On a switch, `WeeklyRestaurantService.selectCity` resets to `building` and re-bootstraps. Home, Pick and Find all follow: Home and Pick clear their borough / neighborhood / cuisine chips, Home reloads the region list (`/api/locations?city=`), Pick rebuilds its deck, and the Find map frames the city: once the list loads it fits every restaurant whose coordinates fall inside the city's plausibility box, with the pins kept above the bottom panel. It zooms to the user's GPS position instead when that's inside the selected city. Bay Area regions fill the "borough" slot: San Francisco · East Bay · Peninsula · South Bay · North Bay. In-flight weekly requests for the previous city are discarded when they land, so a late response can't overwrite the new city's deck. The "Only show bookable restaurants" setting is skipped for a city with **no** Resy / OpenTable links at all (Bay Area before its booking backfill), so the deck isn't empty. See `agent_docs/bay-area-expansion.md`.
 
 ---
 
 ## User Identity & Per-User Data
 
-Real Apple / Google Sign-In is deferred (see `TASKS.md` § A1–A23). Until it lands, the backend identifies each client by an **anonymous device-scoped UUID**. This is enough to persist reservations and favorites server-side without a login screen, and it leaves a clean upgrade path — swap the anonymous id for the real Apple/Google subject id during sign-in.
+Apple and Google Sign-In are both wired (see § Sign-in providers below). Signing in is optional: guests ("Continue as guest") stay on an **anonymous device-scoped UUID**. This is enough to persist reservations and favorites server-side without a login screen, and it leaves a clean upgrade path — swap the anonymous id for the real Apple/Google subject id during sign-in.
 
 ### iOS: `IdentityService`
 
@@ -96,10 +96,21 @@ User-scoped tables are defined in `backend/scripts/migrate.ts` (SQLite) and `bac
 - **Favorites** share the same pattern; only the storage endpoints ship today (UI for remote-synced favorites is deferred until auth lands).
 - **Seen-today** is deliberately device-local (`SeenService` in `UserDefaults`) and is **not** synced — cross-device repeat cards within a single day are an acceptable tradeoff versus per-swipe DB writes. TTL is 1 day by construction (keys are stamped with the ISO date; older keys GC'd on next read).
 
+### Sign-in providers
+
+`LoginView` shows **Sign in with Apple** (native `ASAuthorizationController`) and **Continue with Google** (`GoogleSignIn-iOS` SDK 7.x via SPM, `GoogleSignInIntegration.swift`), then "Continue as guest". Settings → Account shows "Sign in with Apple or Google" for guests, which re-opens the same login gate.
+
+Both providers end in the same exchange: `AuthService.exchange(provider:idToken:displayName:)` → `POST /api/auth/login { provider, idToken, anonymousUserId, displayName? }`. The backend verifies the token against the provider's JWKS, upserts the `users` row (by `apple_sub` / `google_sub`), migrates `user_reservations` + `user_favorites` from `anonymousUserId` to the verified id, and returns `{userId, displayName, email, emailVerified, provider}`. iOS swaps the Keychain id for `userId` and sets `AuthService.state = .authenticated(…, provider: "apple" | "google")`.
+
+Google config:
+- iOS OAuth client id `617615737877-0pdsb8nrjnosdhnsebn794501t1o5m52.apps.googleusercontent.com` (GCP project shown to users as "WhereToEat App"). Lives in `WhereToEat/WhereToEat/Info.plist` (merged into the generated plist via `INFOPLIST_FILE`) as `GIDClientID`, plus the reversed id `com.googleusercontent.apps.617615737877-0pdsb8nrjnosdhnsebn794501t1o5m52` as a `CFBundleURLTypes` scheme. The OAuth redirect is forwarded with `.onOpenURL { GIDSignIn.handle }` in `WhereToEatApp`.
+- Backend: `GOOGLE_IOS_CLIENT_IDS` (comma-separated accepted `aud` values) must contain that client id. Apple uses `APPLE_BUNDLE_IDS`.
+- Cancelling the Google sheet is silent (no error banner). Sign out also calls `GIDSignIn.signOut()` so the next Google sign-in shows the account picker.
+
 ### Why an anonymous id today
 
 - Unblocks "cross-device booking list" + "backend-truth bookings" now, with zero auth UI surface.
-- When Apple / Google Sign-In ships, the login flow performs:
+- When the user signs in with Apple / Google, the login flow performs:
   1. Verify the identity token (JWKS).
   2. `UPDATE users SET id = :subjectId WHERE id = :anonymousId` (single transaction, cascades via FK in Neon).
   3. Client swaps the Keychain id for the subject id, keeping future `X-User-Id` headers stable.
@@ -113,7 +124,7 @@ The app's bottom navigation has four root tabs, in this order:
 | # | Tab | Icon | Root view | Purpose |
 |---|---|---|---|---|
 | 0 | **Home** | `house.fill` | `mainTab` (greeting + bookings + picks) | Overview surface — greeting, upcoming reservations, three curated picks, gradient CTA into Pick |
-| 1 | **Pick** | `flame.fill` | `DiscoveryContainerView(viewModel: pickVM)` | The Tinder-style swipe deck (formerly reachable only via Home's CTA push). Top-left toolbar: the city picker (New York / Bay Area, 50% opacity), which drives the whole app's deck city. |
+| 1 | **Pick** | `flame.fill` | `DiscoveryContainerView(viewModel: pickVM)` | The Tinder-style swipe deck (formerly reachable only via Home's CTA push). No city button since 2026-11-27: the deck city is set in Settings → City. |
 | 2 | **Find** | `map.fill` | `FindView` | Map of the selected city's restaurants + bottom-sheet list with cuisine filter chips. |
 | 3 | **My List** | `heart.text.square` | `CustomListView` | User's saved restaurants. |
 
@@ -125,6 +136,7 @@ Map-of-NYC + bottom-sheet list, modeled on Resy / OpenTable's "Search" surface. 
 
 **Layout:**
 - Full-bleed `Map` (Apple Maps via SwiftUI `Map(position:selection:)`) centered on Manhattan (40.7308, -73.9973, 0.10° span). Each restaurant with non-zero coords renders as a `FindMapMarker` — red filled circle, 2pt white border, drop shadow. Selected pin scales 16→22pt and gains an orange glow ring.
+- **Clustering (2026-11-27, FIND-1).** Pins no longer pile up: `FindViewModel.clusters(cellLat:cellLng:)` groups pins greedily in screen space (radius ≈ 60 pt converted to degrees from the current visible span and the map's size; pins visited in deck-rank order, each joins the first cluster whose seed is within one radius). A group of 2+ draws as an orange numbered bubble (`FindClusterMarker`, 32–44 pt by count); tapping it zooms to fit its members ×2.2 (min span 0.004°) so they split. The selected restaurant is never clustered. Name labels show only on the selected pin (labels on every pin were most of the clutter). Clusters recompute when a pan / zoom ends (`onMapCameraChange(.onEnd)`).
 - Floating `ScrollView(.horizontal)` of cuisine chips at the top (`ultraThinMaterial` background) — same `CuisineChip` palette as Discovery for visual consistency, but local to the Find file.
 - Bottom sheet (`.presentationDetents([.height(96), .medium, .large])`, `presentationBackgroundInteraction(.enabled(upThrough: .medium))`):
   - Peek (96pt): `"N restaurants"` label + drag handle.
@@ -190,26 +202,47 @@ Curated cards under a static `"This week's picks"` header. The section is **alwa
 
 **Tap a pick** → `RestaurantDetailView` sheet (unified booking surface; see Task 2).
 
-### Single CTA
+### Trending now (2026-11-27, HOME-1)
 
-One purple→orange gradient button labeled based on context:
+Horizontal rail under This week's picks, header "Trending now 🔥". Restaurants from the most recent popular 小红书 posts, computed on the device from `/weekly` `sources[]` (no backend change).
 
-- **No bookings yet** → `"Swipe through all N picks →"`
-- **Has bookings** → `"Swipe through N more picks →"`
-- **No weekly data** → `"Find another restaurant →"` (fallback)
+- **Score:** each 小红书 post scores `log10(1 + likes) × 0.5^(ageDays / 14) / √(restaurants in the deck that share that post URL)`; a restaurant takes its best post. Logs tame viral outliers, the 14-day half-life favors recency, and the √ split stops one roundup post from filling the rail.
+- **Window:** posts from the last 30 days; widens to 60, then 90 if fewer than 4 restaurants qualify. Fewer than 4 at 90 days → the section is hidden.
+- **Mix:** at most 2 per cuisine and 1 per post, up to 8 cards.
+- **Filters:** same shared filter set as the picks plus a working photo; restaurants already in This week's picks are excluded. Cards rendered today stay even after the user opens them (seen-today is skipped for ids in `home.trendingShown.<day>.<user>`).
+- **Card:** 160 × 210, photo, name, neighborhood, heat line `🔥 2.3k · 4d ago` (likes and age of the winning post). Tap → `RestaurantDetailView`.
+- Post dates parse with fractional seconds (`2026-10-15T10:45:51.000Z`).
 
-Launches the Discovery deck (Task 1).
+The old purple→orange "Swipe through all N picks →" gradient CTA was **removed** (2026-11-27). The deck is reached from the Pick tab or the `🍽 N picks` stat.
 
 ### Stats row
 
-Two tap-through pills at the bottom: `🍽 N picks` opens the Discovery deck, `📍 N saved` switches to the My List tab (via a `.switchToMyList` NotificationCenter bus).
+Two tap-through pills below Trending now: `🍽 N picks` opens the Discovery deck, `📍 N saved` switches to the My List tab (via a `.switchToMyList` NotificationCenter bus).
+
+Styled like the pick cards (2026-11-27): cream `homeBgBottom` fill, 1 pt `cardBorder` hairline, soft shadow, 16 pt corners, and a trailing chevron. They used to be flat `systemGray6` blocks that read as cold gray on the cream page.
+
+### I'm feeling lucky (2026-11-27, HOME-1) — last card on Home
+
+One card (`LuckyCard`) that picks a restaurant for you. Design: `agent_docs/home-trending-and-lucky.md`.
+
+- **Look (Peach card):** light mode = peach → cream wash `#FFDBB5 → #FFF1DD` with the sienna `cardBorder` hairline, cocoa title "Can't decide?", orange caption "I'm feeling lucky". Dark mode = warm charcoal `#2A201A → #241C17` with a 25% orange hairline, cream `#F4EADF` title, `#3A2E26` chips with peach text. A fan of two candidate photos behind a face-down orange "?" card.
+- **CRAVING chips:** `Surprise me`, then the user's usual cuisine marked ✨, then the other cuisines with at least one candidate, by candidate count. The usual cuisine is inferred: confirmed bookings weigh 3, My List saves 2, right-swipes in the last 30 days 1; needs 2+ signals and the cuisine must exist in the city.
+- **WHERE chips:** `Near me` (only when some deck restaurant is within ~10 mi of the phone), `All of <city>`, then the city's regions that have a match for the chosen cuisine (empty regions are left out, except the one currently selected). Both chip rows scroll edge to edge inside the card and keep the selected chip scrolled into view.
+- **Near me radius:** 1 mi (NYC) / 3 mi (other cities), doubling up to 3 times until 3+ candidates, else the whole city.
+- **Selection** is saved per city (`lucky.cuisine.<city>`, `lucky.place.<city>`). First-run default: usual cuisine (else Surprise me) + Near me (else the whole city).
+- **Button:** orange "Roll the dice" with "N spots within X mi · N rolls left". With 0 matches it becomes "Widen to all of <city>" (or "Try Surprise me" when already city-wide) and the meta line is hidden so the label isn't truncated. After 3 rolls a day (1 + 2 re-rolls, `lucky.rolled.<day>.<user>`) it becomes "Swipe the deck". Chip taps never roll.
+- **Picking:** candidates = shared filter set ∩ working photo ∩ cuisine ∩ place, minus restaurants already rolled today. Weighted random: deck rank (1 → 0.2) × rating (≥4.5 ×1.3, <4.0 ×0.6) × bookable ×1.5.
+- **Roll screen (`LuckyRollView`, full-screen cover):** ~1.2 s of up to 7 photos flipping and slowing down (light haptic per tick, success haptic on land), then photo, name, `Cuisine · Neighborhood · 0.6 mi`, rating, top quote, **Book this one** (pushes `RestaurantDetailView`) and **Roll again · N left**.
+
 
 ### Background
 
 Home has a warm vertical gradient behind the scroll content — sets a "food app" tone on open without competing with the hero cards / pick rows (which keep their own white or photo backgrounds so they still pop). The same palette is reused on **My List** so both tabs share one visual signature.
 
 - **Light mode** — flat cream `#FFF0D9` (the `homeBgMid` stop). The earlier three-stop gradient (peach `#FFDFBB` → cream `#FFF0D9` → near-white `#FFFAEE`) introduced a visible seam where the peach met the near-white that read as "weird" on the device, so the wash is a single calm cream now.
-- **Dark mode** — flat cocoa `#1E1209` (the dark-mode `homeBgMid`), keeping the "kitchen at night" feel without a vertical band.
+- **Dark mode = Low light (2026-11-27, DARK-4, current).** A tonal warm-gray theme, same on all four tabs: page `#14110F` (`homeBgMid`), cards `#2A231E` (`homeBgBottom`, `Color.surface`; brightened from `#1F1A17` on user request), raised surfaces `#312822` (`homeBgTop`, `detailBgTop`, Lucky card), insets `#3A302A` (`surfaceMuted`), Find's list panel `#2A231E` (`Color.listPanel`; cream in light, unchanged), hairline = warm white at 7% (`cardBorder`), tab bar `#1A1613` (`tabBarFill`). Navigation titles use warm off-white `#EDE4D8` (`UIColor.ink`). Photos render ~8% dimmer in dark (`CachedAsyncImage` `.brightness(-0.08)`). Slot labels soften in dark: NEW THIS WEEK `#8FC79A`, HIDDEN GEM `#B9A6F0`. Lucky card dark = raised `#312822` with a 35% orange hairline and `#3A302A` chips. The DARK-2 "bright cards on a dark page" approach (`.brightCard()`) was removed.
+- **One accent across all tabs, both themes (2026-11-27).** The `AccentColor` asset was empty (iOS blue). It is now orange `#FA7A1A` (light) / `#F0843C` (dark), so the tab bar selection, back buttons, Book buttons, toggles, checkmarks, the Find recenter button and Pick's Reset button all share it. Pick's borough chips switched from purple to the accent; `LuckyCard.orange` aliases `Color.accentColor`.
+- **Superseded dark passes (2026-11-27): DARK-1 warm charcoal, DARK-2 bright cards.** Page `#161210` (`homeBgMid`), cards `#221C18` (`homeBgBottom`, lighter than the page so they read as raised), accent surfaces `#2A201A` (`homeBgTop`, `detailBgTop`), hairline = cream at 10% (`cardBorder`), tab bar `#161210`. Detail and Discovery gradients use the same charcoal family (no more dark mint / dark forest). Chips, pills and small buttons use `Color.surface` (white in light, `#221C18` in dark) and placeholders `Color.surfaceMuted` (`systemGray6` / `#2A201A`) instead of `systemBackground` / `systemGray6`, which were pure black and looked like holes. Replaced the old cocoa `#1E1209` page with near-black cards, which the user found ugly. Since 2026-11-27 the app is **light by default**; dark mode shows only when Settings → Appearance is Dark, or Match system with iOS in dark mode.
 
 Implementation: a single shared `WarmGradientBackground` view (defined in `HomeView.swift` alongside the `Color.homeBg{Top,Mid,Bottom}` dynamic-color extension; the `Top`/`Bottom` shades are kept around for one-off accents but the background itself uses only `homeBgMid`). Each consumer applies `.background(WarmGradientBackground().ignoresSafeArea())` + `.scrollContentBackground(.hidden)` on its scrolling container so the wash shows through instead of the default `systemBackground`. On `CustomListView`'s `List`, each row explicitly keeps `.listRowBackground(Color(.systemBackground))` so rows still read as raised cards over the warm wash.
 
@@ -662,12 +695,13 @@ Stage 1 approach:
 Reachable from the Home toolbar's gear icon. Form sections in order:
 
 1. **Your name** — manual `displayName` override on `UserProfile`. Used by Home's `"Good afternoon, {name}"` greeting until Apple Sign-In takes over.
-2. **Location** — current-location indicator + "Change city" override (pins a city until cleared).
+2. **City** — "Current location" (follow GPS) plus one row per DB city (New York, Bay Area), check on the current one. Drives Home, Pick and Find (see § City picker). Replaced the free-form "Change city" search on 2026-11-27; a legacy override shows with Clear.
+2a. **Appearance** — segmented Light / Dark / Match system, stored in `UserDefaults["app_appearance"]`, **default Light**. Applied by setting `overrideUserInterfaceStyle` on every window (`AppAppearance.apply()` from `RootView`), so UIKit presentations like `SFSafariViewController` follow too.
 3. **Dietary Preferences** — toggle chips against `DietaryTag`. "No restrictions" is mutually exclusive with the rest.
 4. **Reservations** — default party-size stepper + "Only show bookable restaurants" toggle.
 5. **Recommendation Sources** — per-source toggles for `xiaohongshu` / `eater` / `resy_blog`; persisted on `UserProfile.discoverySources` (drives both Home picks and the Discovery deck — see § Deck filter sources).
 6. **Display** — "Show Google ratings" toggle (when off, ratings hide from cards + detail).
-7. **Account** — when signed in, shows provider + name + a destructive Sign Out button (resets the Keychain UUID, re-prompts the login gate). When anonymous, shows a Sign-in shortcut.
+7. **Account** — when signed in, shows provider + name + a destructive Sign Out button (resets the Keychain UUID, re-prompts the login gate). When anonymous, shows a "Sign in with Apple or Google" shortcut that re-opens the login gate.
 8. **Send Feedback** — dedicated row that pushes `FeedbackView` (multiline `TextEditor` + optional reply-to email field prefilled from `UserDefaults["auth.email"]`). Submits to `POST /api/feedback`, which sends an email to `prompt.and.ship@gmail.com` via Resend with the `users.email` row as the `reply_to` fallback. Body also carries `appVersion` / `deviceModel` / `iosVersion` for triage.
 9. **About** — version (`CFBundleShortVersionString`).
 
@@ -727,7 +761,7 @@ vercel --prod --yes    # deploy
 SQLite at `backend/data/wheretoeat.db` is the dev source of truth — write/test there first, then push.
 
 **Vercel env vars.**
-- Set (production, as of 2026-05-02): `GOOGLE_PLACES_API_KEY`, `YELP_API_KEY`, `RESY_EMAIL`; Neon `WHERE_TO_EAT_DATABASE_URL` + family (auto-injected); Blob `RESTAURANT_PHOTOS_READ_WRITE_TOKEN` (auto-injected); `DEEP_SEEK_API` (DeepSeek-V4-Pro — was Gemini's `LLM_API_KEY`); optional `DEEPSEEK_MODEL` override; `CRON_SECRET`; `XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID` (sourced from `~/.xiaohongshu-cli/cookies.json` — see memory `project_xhs_vercel_auth.md`).
+- Set (production, as of 2026-05-02): `GOOGLE_PLACES_API_KEY`, `YELP_API_KEY`, `RESY_EMAIL`; Neon `WHERE_TO_EAT_DATABASE_URL` + family (auto-injected); Blob `RESTAURANT_PHOTOS_READ_WRITE_TOKEN` (auto-injected); `DEEP_SEEK_API` (DeepSeek-V4-Pro — was Gemini's `LLM_API_KEY`); optional `DEEPSEEK_MODEL` override; `CRON_SECRET`; `XHS_WEB_SESSION` / `XHS_A1` / `XHS_WEBID` (sourced from `~/.xiaohongshu-cli/cookies.json` — see memory `project_xhs_vercel_auth.md`); `APPLE_BUNDLE_IDS`. **Needed for Google Sign-In (not yet set as of 2026-11-27):** `GOOGLE_IOS_CLIENT_IDS=617615737877-0pdsb8nrjnosdhnsebn794501t1o5m52.apps.googleusercontent.com`.
 - **Still missing** (only needed if endpoints below are reactivated): `LLM_MODEL` (defaults to `gemini-2.5-flash` if unset), `RESY_PASSWORD` + `ANTHROPIC_API_KEY` (only if reservation/legacy paths come back). Stripe keys — deferred until the deposit flow is restored.
 - **`xsec_token` is single-use.** Each XHS share link carries a token consumed on first read; testing the deployed `import-xhs` requires a fresh token per attempt (pull via `xhs search "纽约美食" --json`). See memory `project_xhs_xsec_token_singleuse.md`.
 

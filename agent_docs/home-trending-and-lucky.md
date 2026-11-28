@@ -1,6 +1,6 @@
 # Home: Trending now + I'm feeling lucky (design)
 
-Status: **design, not built** (2026-11-27). Decisions marked ✅ are proposed defaults; the open questions are at the end.
+Status: **built 2026-11-27 on branch `claude/home-trending-lucky`** with the Peach card palette (user pick). Shipped behavior is in SPEC § Home; this doc keeps the design history.
 
 ## Goals
 

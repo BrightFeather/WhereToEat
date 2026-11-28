@@ -42,7 +42,7 @@ struct ReservationConfirmView: View {
                     infoRow(icon: "mappin", label: viewModel.restaurant.address)
                 }
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.surfaceMuted)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 // Deposit info

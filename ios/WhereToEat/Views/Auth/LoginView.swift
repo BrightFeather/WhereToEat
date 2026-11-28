@@ -6,9 +6,8 @@ import AuthenticationServices
 /// mode they stay keyed to the Keychain UUID and can upgrade later by signing
 /// in, at which point their existing bookings migrate to the verified id.
 ///
-/// Google Sign-In is deprioritised to P2 — UI removed below; the
-/// `runGoogleSignIn` / `googleButton` helpers are kept (unreferenced) so
-/// re-enabling later is a one-liner.
+/// Google Sign-In sits under Apple (GoogleSignIn SDK → same backend
+/// `POST /api/auth/login` exchange, provider "google").
 struct LoginView: View {
     @ObservedObject private var auth = AuthService.shared
     var onContinueAsGuest: () -> Void
@@ -206,9 +205,7 @@ struct LoginView: View {
                     .onTapGesture { Task { await auth.signInWithApple() } }
             )
 
-            // googleButton — hidden until Google Sign-In ships (P2).
-            // Restore by uncommenting once GIDSignIn is wired up.
-            // googleButton
+            googleButton
 
             Button(action: onContinueAsGuest) {
                 Text("Continue as guest")
@@ -230,9 +227,12 @@ struct LoginView: View {
     @MainActor
     private func runGoogleSignIn() async {
         guard let presenter = topViewController() else { return }
+        auth.lastError = nil
         do {
             let (token, name) = try await GoogleSignInIntegration.signIn(presenting: presenter)
             await auth.completeGoogleSignIn(idToken: token, displayName: name)
+        } catch where GoogleSignInIntegration.isCancellation(error) {
+            // User closed the Google sheet — stay on the login page quietly.
         } catch {
             auth.lastError = error.localizedDescription
         }
@@ -262,7 +262,7 @@ struct LoginView: View {
             .foregroundColor(.primary)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(Color(.systemGray6))
+            .background(Color.surfaceMuted)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }

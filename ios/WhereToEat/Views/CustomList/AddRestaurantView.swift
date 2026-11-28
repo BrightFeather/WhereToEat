@@ -19,7 +19,7 @@ struct AddRestaurantView: View {
                             .keyboardType(.URL)
                             .autocapitalization(.none)
                             .padding()
-                            .background(Color(.systemGray6))
+                            .background(Color.surfaceMuted)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                         if !urlText.isEmpty {
                             Button { urlText = "" } label: {

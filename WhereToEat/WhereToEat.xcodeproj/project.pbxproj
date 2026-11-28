@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5FBAD1E10000000000B001E1 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 5FBAD1E00000000000B001E0 /* GoogleSignIn */; };
 		5F132D002F7B81BA002C2B2B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F132CFF2F7B81BA002C2B2B /* Assets.xcassets */; };
 		5F132D032F7B81BA002C2B2B /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5F132D022F7B81BA002C2B2B /* Preview Assets.xcassets */; };
 		5F132D0E2F7B81BA002C2B2B /* WhereToEatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D0D2F7B81BA002C2B2B /* WhereToEatTests.swift */; };
@@ -36,12 +37,14 @@
 		5F132D752F7B8272002C2B2B /* RestaurantCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D3F2F7B8272002C2B2B /* RestaurantCardView.swift */; };
 		5F132D762F7B8272002C2B2B /* RestaurantDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D402F7B8272002C2B2B /* RestaurantDetailView.swift */; };
 		5F132D772F7B8272002C2B2B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D422F7B8272002C2B2B /* HomeView.swift */; };
+		5FBAD1610000000000B00161 /* TrendingRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBAD1600000000000B00160 /* TrendingRail.swift */; };
+		5FBAD1710000000000B00171 /* LuckyCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBAD1700000000000B00170 /* LuckyCard.swift */; };
+		5FBAD1810000000000B00181 /* LuckyRollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FBAD1800000000000B00180 /* LuckyRollView.swift */; };
 		5F132D782F7B8272002C2B2B /* WeeklyCuisinePromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D432F7B8272002C2B2B /* WeeklyCuisinePromptView.swift */; };
 		5F132D792F7B8272002C2B2B /* OnboardingContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D452F7B8272002C2B2B /* OnboardingContainerView.swift */; };
 		5F132D7A2F7B8272002C2B2B /* AvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D472F7B8272002C2B2B /* AvailabilityView.swift */; };
 		5F132D7B2F7B8272002C2B2B /* ReservationConfirmView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D482F7B8272002C2B2B /* ReservationConfirmView.swift */; };
 		5F132D7C2F7B8272002C2B2B /* ReservationSuccessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D492F7B8272002C2B2B /* ReservationSuccessView.swift */; };
-		5F132D7D2F7B8272002C2B2B /* CityOverrideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4B2F7B8272002C2B2B /* CityOverrideView.swift */; };
 		5F132D7E2F7B8272002C2B2B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4C2F7B8272002C2B2B /* SettingsView.swift */; };
 		5F132D7F2F7B8272002C2B2B /* PhotoCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4E2F7B8272002C2B2B /* PhotoCarouselView.swift */; };
 		5F132D802F7B8272002C2B2B /* PlatformBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F132D4F2F7B8272002C2B2B /* PlatformBadgeView.swift */; };
@@ -103,6 +106,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5FBAD1E20000000000B001E2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1B12BDD5A8AE87153CB24FB9 /* XHSImportPreviewView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = XHSImportPreviewView.swift; sourceTree = "<group>"; };
 		5F132CF82F7B81B9002C2B2B /* WhereToEat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhereToEat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5F132CFB2F7B81B9002C2B2B /* WhereToEatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereToEatApp.swift; sourceTree = "<group>"; };
@@ -139,12 +143,14 @@
 		5F132D3F2F7B8272002C2B2B /* RestaurantCardView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RestaurantCardView.swift; sourceTree = "<group>"; };
 		5F132D402F7B8272002C2B2B /* RestaurantDetailView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RestaurantDetailView.swift; sourceTree = "<group>"; };
 		5F132D422F7B8272002C2B2B /* HomeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		5FBAD1600000000000B00160 /* TrendingRail.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TrendingRail.swift; sourceTree = "<group>"; };
+		5FBAD1700000000000B00170 /* LuckyCard.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LuckyCard.swift; sourceTree = "<group>"; };
+		5FBAD1800000000000B00180 /* LuckyRollView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LuckyRollView.swift; sourceTree = "<group>"; };
 		5F132D432F7B8272002C2B2B /* WeeklyCuisinePromptView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WeeklyCuisinePromptView.swift; sourceTree = "<group>"; };
 		5F132D452F7B8272002C2B2B /* OnboardingContainerView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = OnboardingContainerView.swift; sourceTree = "<group>"; };
 		5F132D472F7B8272002C2B2B /* AvailabilityView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AvailabilityView.swift; sourceTree = "<group>"; };
 		5F132D482F7B8272002C2B2B /* ReservationConfirmView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReservationConfirmView.swift; sourceTree = "<group>"; };
 		5F132D492F7B8272002C2B2B /* ReservationSuccessView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReservationSuccessView.swift; sourceTree = "<group>"; };
-		5F132D4B2F7B8272002C2B2B /* CityOverrideView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CityOverrideView.swift; sourceTree = "<group>"; };
 		5F132D4C2F7B8272002C2B2B /* SettingsView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5F132D4E2F7B8272002C2B2B /* PhotoCarouselView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PhotoCarouselView.swift; sourceTree = "<group>"; };
 		5F132D4F2F7B8272002C2B2B /* PlatformBadgeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PlatformBadgeView.swift; sourceTree = "<group>"; };
@@ -193,6 +199,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5FBAD1E10000000000B001E1 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,6 +254,7 @@
 				5F132CFD2F7B81B9002C2B2B /* ContentView.swift */,
 				5F132CFF2F7B81BA002C2B2B /* Assets.xcassets */,
 				5F132D042F7B81BA002C2B2B /* WhereToEat.entitlements */,
+				5FBAD1E20000000000B001E2 /* Info.plist */,
 				5F132D012F7B81BA002C2B2B /* Preview Content */,
 				5FBAD1400000000000B00140 /* Fraunces-VF.ttf */,
 				5FBAD1500000000000B00150 /* Fraunces-Italic-VF.ttf */,
@@ -360,6 +368,9 @@
 			isa = PBXGroup;
 			children = (
 				5F132D422F7B8272002C2B2B /* HomeView.swift */,
+				5FBAD1600000000000B00160 /* TrendingRail.swift */,
+				5FBAD1700000000000B00170 /* LuckyCard.swift */,
+				5FBAD1800000000000B00180 /* LuckyRollView.swift */,
 				5F132D432F7B8272002C2B2B /* WeeklyCuisinePromptView.swift */,
 			);
 			path = Home;
@@ -387,7 +398,6 @@
 		5F132D4D2F7B8272002C2B2B /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				5F132D4B2F7B8272002C2B2B /* CityOverrideView.swift */,
 				5F132D4C2F7B8272002C2B2B /* SettingsView.swift */,
 				5FBAD0F00000000000B000F0 /* FeedbackView.swift */,
 			);
@@ -500,6 +510,9 @@
 			dependencies = (
 			);
 			name = WhereToEat;
+			packageProductDependencies = (
+				5FBAD1E00000000000B001E0 /* GoogleSignIn */,
+			);
 			productName = WhereToEat;
 			productReference = 5F132CF82F7B81B9002C2B2B /* WhereToEat.app */;
 			productType = "com.apple.product-type.application";
@@ -625,7 +638,6 @@
 				5F132D882F7B8272002C2B2B /* HomeViewModel.swift in Sources */,
 				5F132D652F7B8272002C2B2B /* Review.swift in Sources */,
 				5F132D7B2F7B8272002C2B2B /* ReservationConfirmView.swift in Sources */,
-				5F132D7D2F7B8272002C2B2B /* CityOverrideView.swift in Sources */,
 				5F132D862F7B8272002C2B2B /* CustomListViewModel.swift in Sources */,
 				5F132D712F7B8272002C2B2B /* AddRestaurantView.swift in Sources */,
 				5F132D732F7B8272002C2B2B /* ImportPreviewView.swift in Sources */,
@@ -667,6 +679,9 @@
 				5F132D6F2F7B8272002C2B2B /* PersistenceController.swift in Sources */,
 				5F132D642F7B8272002C2B2B /* Restaurant.swift in Sources */,
 				5F132D772F7B8272002C2B2B /* HomeView.swift in Sources */,
+				5FBAD1610000000000B00161 /* TrendingRail.swift in Sources */,
+				5FBAD1710000000000B00171 /* LuckyCard.swift in Sources */,
+				5FBAD1810000000000B00181 /* LuckyRollView.swift in Sources */,
 				5F132D7E2F7B8272002C2B2B /* SettingsView.swift in Sources */,
 				5FBAD0F10000000000B000F1 /* FeedbackView.swift in Sources */,
 				5F132D722F7B8272002C2B2B /* CustomListView.swift in Sources */,
@@ -849,11 +864,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WhereToEat/WhereToEatDebug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 46;
 				DEVELOPMENT_ASSET_PATHS = "\"WhereToEat/Preview Content\"";
 				DEVELOPMENT_TEAM = A5Z66YNTC8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WhereToEat/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "WhereToEat NYC uses your location to find restaurants near you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WhereToEat uses your location to find restaurants near you.";
@@ -881,11 +897,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WhereToEat/WhereToEat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 46;
 				DEVELOPMENT_ASSET_PATHS = "\"WhereToEat/Preview Content\"";
 				DEVELOPMENT_TEAM = A5Z66YNTC8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = WhereToEat/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "WhereToEat NYC uses your location to find restaurants near you.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "WhereToEat uses your location to find restaurants near you.";
@@ -912,7 +929,7 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 46;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 1.1;
@@ -930,7 +947,7 @@
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 46;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MARKETING_VERSION = 1.1;
@@ -947,7 +964,7 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 46;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = weijia.WhereToEatUITests;
@@ -963,7 +980,7 @@
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 46;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = weijia.WhereToEatUITests;
@@ -1025,6 +1042,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5FBAD1E00000000000B001E0 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5F70C9032FA079F9002632F4 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5F132CF02F7B81B9002C2B2B /* Project object */;
 }

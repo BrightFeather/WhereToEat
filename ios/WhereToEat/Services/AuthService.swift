@@ -8,7 +8,7 @@ enum AuthState: Equatable {
     case authenticated(userId: String, displayName: String?, provider: String)
 }
 
-/// Wraps native Apple Sign-In (and Google Sign-In once SDK is added) and
+/// Wraps native Apple Sign-In and Google Sign-In (GoogleSignIn SDK) and
 /// exchanges the resulting identity token with the backend via
 /// `POST /api/auth/login`. On success, stores the verified user id back into
 /// the Keychain so every future `X-User-Id` header is the real subject id.
@@ -57,11 +57,11 @@ final class AuthService: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Google (stub — SDK integration follows)
+    // MARK: - Google
 
     /// Exchanges a Google ID token obtained from the GoogleSignIn SDK. The
-    /// UI layer is responsible for presenting GIDSignIn and passing the raw
-    /// token here, so this service stays SDK-agnostic and testable.
+    /// UI layer presents GIDSignIn (see `GoogleSignInIntegration`) and passes
+    /// the raw token here, so this service stays SDK-agnostic.
     func completeGoogleSignIn(idToken: String, displayName: String?) async {
         lastError = nil
         isSigningIn = true
@@ -81,6 +81,7 @@ final class AuthService: NSObject, ObservableObject {
         UserDefaults.standard.removeObject(forKey: Self.k_displayName)
         UserDefaults.standard.removeObject(forKey: Self.k_email)
         IdentityService.shared.resetAnonymous()
+        GoogleSignInIntegration.signOut()
         state = .anonymous
     }
 
@@ -245,10 +246,12 @@ extension AuthService: ASAuthorizationControllerPresentationContextProviding {
 
 enum AuthError: LocalizedError {
     case missingToken
+    case missingGoogleToken
 
     var errorDescription: String? {
         switch self {
         case .missingToken: return "Apple did not return an identity token."
+        case .missingGoogleToken: return "Google did not return an identity token."
         }
     }
 }

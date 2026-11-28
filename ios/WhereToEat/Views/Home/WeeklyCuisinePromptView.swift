@@ -26,7 +26,7 @@ struct WeeklyCuisinePromptView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(selected.contains(tag) ? Color.accentColor.opacity(0.15) : Color(.systemGray6))
+                            .background(selected.contains(tag) ? Color.accentColor.opacity(0.15) : Color.surfaceMuted)
                             .foregroundColor(selected.contains(tag) ? .accentColor : .primary)
                             .clipShape(Capsule())
                             .overlay(Capsule().strokeBorder(selected.contains(tag) ? Color.accentColor.opacity(0.4) : .clear))

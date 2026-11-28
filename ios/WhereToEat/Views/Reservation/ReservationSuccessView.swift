@@ -76,7 +76,7 @@ struct ReservationSuccessView: View {
                     confirmationRow(icon: "mappin", text: restaurant.address)
                 }
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.surfaceMuted)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal)
                 .offset(y: contentOffset)

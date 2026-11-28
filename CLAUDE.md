@@ -29,8 +29,9 @@ First surface the user sees on open. Layout reacts to whether there are any upco
   - **TOP PICK** (orange) — highest-ranked restaurant passing the filter set.
   - **NEW THIS WEEK** (green) — highest-ranked with `post_created_at` < 14 days.
   - **HIDDEN GEM** (purple) — mid-ranked (20–60% percentile) with a bookable link; deterministic per day + user id so the slot stays stable through the day and refreshes tomorrow.
-- **Single gradient CTA** — `"Swipe through all N picks →"` or `"Swipe through N more picks →"` when bookings exist. Opens Discovery.
-- **Stats row** — `🍽 N picks` (tap → Discovery) · `📍 N saved` (tap → My List via `.switchToMyList` bus).
+- **Trending now** — horizontal rail of restaurants from the most recent popular 小红书 posts (likes × 14-day half-life, roundup posts split; 30-day window widening to 90; hidden under 4).
+- **Stats row** — `🍽 N picks` (tap → Discovery) · `📍 N saved` (tap → My List via `.switchToMyList` bus). The old "Swipe through all N picks" CTA is gone.
+- **I'm feeling lucky** — last card: CRAVING / WHERE chips, "Roll the dice" → full-screen slot-machine roll → Book this one / Roll again (3 rolls a day).
 - **Toolbar** — calendar icon (top-right) → My Bookings · gear icon → Settings.
 
 All picks share the Discovery filter set: server-side `user_reservations`, server-side `user_blocked_restaurants`, on-device `SeenService.seenToday()`, local `WeeklySession.swipedCards`. If `UserProfile.showOnlyReservable` is true, non-bookable restaurants are also dropped.
@@ -81,16 +82,17 @@ User's own saved restaurants via share-sheet import, paste-a-link, or the Discov
 
 ### Settings
 
-- Location override (pin a specific city; off by default).
+- City (Current location or a DB city: New York / Bay Area) — the only place to switch cities; Pick has no city button.
+- Appearance: Light (default) / Dark / Match system.
 - Dietary preferences + default party size.
 - Show-only-reservable toggle.
 - **Account** section — provider + display name when signed in · Sign Out (clears Keychain to a fresh anonymous id + re-enables the login gate) · Sign in button for guests.
 
 ### Auth (gated feature — see `TASKS.md § P5/P6`)
 
-- **Apple Sign-In** — iOS code + backend `POST /api/auth/login` + JWKS verification all shipped. Entitlement is commented out in `WhereToEat.entitlements` until the Developer Portal capability is enabled — flipping it on takes one minute in Xcode's Signing & Capabilities tab.
-- **Google Sign-In** — `GoogleSignInIntegration.swift` is a stub; needs GCP iOS OAuth client id + `GoogleSignIn-iOS` SPM package + reversed-client-id URL scheme + `GOOGLE_IOS_CLIENT_IDS` Vercel env var, then 3-line `GIDSignIn.sharedInstance.signIn(...)` swap.
-- **Anonymous fallback** — until either ships, every device gets a Keychain UUID (`com.wheretoeat.identity`) that's attached as `X-User-Id` on every backend request. The `/api/auth/login` migration will rewrite `user_reservations` + `user_favorites` rows from the anonymous id to the verified subject id on first real sign-in.
+- **Apple Sign-In** — iOS code + backend `POST /api/auth/login` (deployed) + JWKS verification + entitlement (Debug + Release) all shipped.
+- **Google Sign-In** — wired via `GoogleSignIn-iOS` SPM (`GoogleSignInIntegration.swift`). Client id + reversed-client-id URL scheme live in `WhereToEat/WhereToEat/Info.plist` (merged with the generated plist). Backend needs `GOOGLE_IOS_CLIENT_IDS` on Vercel — see `TASKS.md § P6b`.
+- **Anonymous fallback** — guests get a Keychain UUID (`com.wheretoeat.identity`) that's attached as `X-User-Id` on every backend request. The `/api/auth/login` migration will rewrite `user_reservations` + `user_favorites` rows from the anonymous id to the verified subject id on first real sign-in.
 
 ## Data model (sketch)
 
@@ -170,4 +172,4 @@ Local SQLite (`backend/data/wheretoeat.db`) is the working copy; Neon Postgres b
 - **LLM parser is DeepSeek-V4-Pro** (was Gemini 2.5 Flash). Reuses the `DEEP_SEEK_API` secret from `feedback-agent` (file at `~/.config/wte-feedback-agent/secrets.env`). Implementation in `backend/api/_lib/deepseek.ts` + `llmExtractor.ts`; override model with `DEEPSEEK_MODEL` env var. Always pass `thinking: { type: 'disabled' }` (V4 default-on thinking eats `max_tokens`).
 - **Drop on any complaint when ingesting XHS posts.** The DeepSeek extractor + standalone `classifyComplaint()` are aggressive: any criticism, lukewarm endorsement ("just okay", "fine"), mixed review, or "X not as good as Y" (where X is the target) → drop. Pure positive only is kept. Failure mode is fail-closed (errors → drop). Backfill via `npm run scrub-negative`; topup via `npm run topup-asian`. See `backend/CLAUDE.md § LLM parser` for the full filter spec.
 - **Xcode project IDs** — when adding a new Swift file, pick hex-only 24-char IDs that don't collide with existing ones under `5FBAD0*`. Linters have re-added colliding entries for `XHSURLParser.swift`; grep the pbxproj before inventing IDs.
-- **Function count on Vercel** — the Hobby plan caps at 12 routes. The deployed bundle currently sits at the cap; `auth/login`, `scrape/eater`, `scrape/xiaohongshu`, `places/enrich`, `stripe/create-payment-intent`, and the `reservations/{resy,opentable,tock}` handlers are parked under `backend/api-archive/`. Adding any new `api/*.ts` route means archiving an existing one or moving the project to Pro.
+- **Function count on Vercel** — the Hobby plan caps at 12 routes. The deployed bundle currently sits at the cap; `auth/login`, `scrape/eater`, `scrape/xiaohongshu`, `places/enrich`, `stripe/create-payment-intent`, and the `reservations/{resy,opentable,tock}` handlers and `user/favorites/{index,[restaurantId]}` are parked under `backend/api-archive/` (`auth/login` is live). Adding any new `api/*.ts` route means archiving an existing one or moving the project to Pro.

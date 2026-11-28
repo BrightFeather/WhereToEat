@@ -216,13 +216,13 @@ struct CardDeckView: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.subheadline).fontWeight(.semibold)
-                    .foregroundColor(Color(red: 0.20, green: 0.55, blue: 0.95).opacity(0.85))
+                    .foregroundColor(Color.accentColor.opacity(0.85))
                     .frame(width: 42, height: 42)
-                    .background(Color(.systemBackground))
+                    .background(Color.surface)
                     .clipShape(Circle())
                     .overlay(
                         Circle()
-                            .strokeBorder(Color(red: 0.20, green: 0.55, blue: 0.95).opacity(0.45),
+                            .strokeBorder(Color.accentColor.opacity(0.45),
                                           lineWidth: 1)
                     )
             }
@@ -253,7 +253,7 @@ struct CardDeckView: View {
                                      ? Color(red: 0.95, green: 0.75, blue: 0.10).opacity(0.85)
                                      : Color.secondary.opacity(0.4))
                     .frame(width: 42, height: 42)
-                    .background(Color(.systemBackground))
+                    .background(Color.surface)
                     .clipShape(Circle())
                     .overlay(
                         Circle()
@@ -292,7 +292,7 @@ struct CardDeckView: View {
                 Text("👎")
                     .font(.title2)
                     .frame(width: 60, height: 60)
-                    .background(Color(.systemBackground))
+                    .background(Color.surface)
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(Color.cardBorder, lineWidth: 1))
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
@@ -320,7 +320,7 @@ struct CardDeckView: View {
                 Text("❤️")
                     .font(.title2)
                     .frame(width: 60, height: 60)
-                    .background(Color(.systemBackground))
+                    .background(Color.surface)
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(Color.cardBorder, lineWidth: 1))
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)
@@ -357,7 +357,7 @@ struct CardDeckView: View {
                     .font(.title2)
                     .foregroundColor(.yellow)
                     .frame(width: 60, height: 60)
-                    .background(Color(.systemBackground))
+                    .background(Color.surface)
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(Color.cardBorder, lineWidth: 1))
                     .shadow(color: .black.opacity(0.08), radius: 6, y: 3)

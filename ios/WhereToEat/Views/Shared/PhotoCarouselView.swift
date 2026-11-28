@@ -23,10 +23,10 @@ struct PhotoCarouselView: View {
                             Color(.systemGray5)
                                 .overlay(Image(systemName: "photo").foregroundColor(.secondary))
                         case .empty:
-                            Color(.systemGray6)
+                            Color.surfaceMuted
                                 .overlay(ProgressView())
                         @unknown default:
-                            Color(.systemGray6)
+                            Color.surfaceMuted
                         }
                     }
                     .clipped()
