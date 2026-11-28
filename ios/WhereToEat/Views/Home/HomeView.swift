@@ -47,6 +47,7 @@ struct HomeView: View {
                         }
                     }
             }
+            .creamTabBar()
             .tabItem { Label("Home", systemImage: "house.fill") }
             .tag(0)
 
@@ -55,6 +56,7 @@ struct HomeView: View {
                 DiscoveryContainerView(viewModel: pickVM)
                     .environmentObject(customListVM)
             }
+            .creamTabBar()
             .tabItem { Label("Pick", systemImage: "flame.fill") }
             .tag(1)
 
@@ -64,6 +66,7 @@ struct HomeView: View {
                     .environmentObject(customListVM)
                     .navigationBarHidden(true)
             }
+            .creamTabBar()
             .tabItem { Label("Find", systemImage: "map.fill") }
             .tag(2)
 
@@ -72,6 +75,7 @@ struct HomeView: View {
                     .navigationTitle("My List")
                     .environmentObject(customListVM)
             }
+            .creamTabBar()
             .tabItem { Label("My List", systemImage: "heart.text.square") }
             .tag(3)
         }
@@ -403,6 +407,16 @@ extension Color {
 }
 
 extension View {
+    /// Cream tab bar on every screen of a tab. The UIKit appearance proxy
+    /// alone isn't enough: SwiftUI's `Map` (Find) and some pushed views
+    /// (restaurant detail) put their own material behind the tab bar, which
+    /// showed as system gray.
+    func creamTabBar() -> some View {
+        self
+            .toolbarBackground(Color(red: 1.00, green: 0.94, blue: 0.85), for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
+    }
+
     /// Dark theme = dark page, bright cards (user, 2026-11-27): cards, chips
     /// and buttons keep the light palette, including their text colors, while
     /// the page behind them goes charcoal.

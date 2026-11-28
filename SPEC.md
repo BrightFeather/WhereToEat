@@ -125,6 +125,7 @@ Map-of-NYC + bottom-sheet list, modeled on Resy / OpenTable's "Search" surface. 
 
 **Layout:**
 - Full-bleed `Map` (Apple Maps via SwiftUI `Map(position:selection:)`) centered on Manhattan (40.7308, -73.9973, 0.10° span). Each restaurant with non-zero coords renders as a `FindMapMarker` — red filled circle, 2pt white border, drop shadow. Selected pin scales 16→22pt and gains an orange glow ring.
+- **Clustering (2026-11-27, FIND-1).** Pins no longer pile up: `FindViewModel.clusters(cellLat:cellLng:)` groups pins greedily in screen space (radius ≈ 60 pt converted to degrees from the current visible span and the map's size; pins visited in deck-rank order, each joins the first cluster whose seed is within one radius). A group of 2+ draws as an orange numbered bubble (`FindClusterMarker`, 32–44 pt by count); tapping it zooms to fit its members ×2.2 (min span 0.004°) so they split. The selected restaurant is never clustered. Name labels show only on the selected pin (labels on every pin were most of the clutter). Clusters recompute when a pan / zoom ends (`onMapCameraChange(.onEnd)`).
 - Floating `ScrollView(.horizontal)` of cuisine chips at the top (`ultraThinMaterial` background) — same `CuisineChip` palette as Discovery for visual consistency, but local to the Find file.
 - Bottom sheet (`.presentationDetents([.height(96), .medium, .large])`, `presentationBackgroundInteraction(.enabled(upThrough: .medium))`):
   - Peek (96pt): `"N restaurants"` label + drag handle.

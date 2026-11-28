@@ -22,6 +22,8 @@ struct FindView: View {
     @ObservedObject private var weekly = WeeklyRestaurantService.shared
     @State private var cameraPosition: MapCameraPosition = .region(Self.cityRegion(WeeklyRestaurantService.shared.activeCity))
     @State private var presentedRestaurant: WeeklyRestaurant? = nil
+    /// Map view size, for converting the ~60 pt cluster radius into degrees.
+    @State private var mapSize: CGSize = .zero
     @State private var panelFraction: CGFloat = 0.45
     /// Set on first appear so we don't keep snapping back to the user's
     /// location every time the tab is re-entered. Subsequent visits respect
@@ -188,26 +190,39 @@ struct FindView: View {
             get: { viewModel.selectedRestaurantId },
             set: { viewModel.selectedRestaurantId = $0 }
         )) {
-            ForEach(viewModel.mappable) { r in
-                let coord = CLLocationCoordinate2D(
-                    latitude: r.latitude ?? 0,
-                    longitude: r.longitude ?? 0
-                )
-                Annotation(
-                    r.googleDisplayName ?? r.restaurantName,
-                    coordinate: coord,
-                    anchor: .bottom
-                ) {
-                    FindMapMarker(
-                        isSelected: viewModel.selectedRestaurantId == r.id
+            ForEach(mapClusters) { cluster in
+                if cluster.isSingle {
+                    let r = cluster.members[0]
+                    let isSelected = viewModel.selectedRestaurantId == r.id
+                    // Name label only on the selected pin; labels on every
+                    // pin were most of the clutter.
+                    Annotation(
+                        isSelected ? (r.googleDisplayName ?? r.restaurantName) : "",
+                        coordinate: cluster.coordinate,
+                        anchor: .bottom
                     ) {
-                        viewModel.select(r)
-                        centerOn(r)
+                        FindMapMarker(isSelected: isSelected) {
+                            viewModel.select(r)
+                            centerOn(r)
+                        }
+                    }
+                    .tag(r.id)
+                } else {
+                    Annotation("", coordinate: cluster.coordinate, anchor: .center) {
+                        FindClusterMarker(count: cluster.members.count) {
+                            zoomInto(cluster)
+                        }
                     }
                 }
-                .tag(r.id)
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { mapSize = geo.size }
+                    .onChange(of: geo.size) { _, size in mapSize = size }
+            }
+        )
         .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
         .mapControls {
             MapCompass()
@@ -219,6 +234,42 @@ struct FindView: View {
         // a gesture; the dataset (~580 rows) recomputes instantly on release.
         .onMapCameraChange(frequency: .onEnd) { context in
             viewModel.visibleRegion = context.region
+        }
+    }
+
+    /// Pins grouped so nothing overlaps at the current zoom: anything that
+    /// would land within ~60 pt of another pin joins a numbered bubble.
+    private var mapClusters: [FindViewModel.MapCluster] {
+        let region = viewModel.visibleRegion ?? Self.cityRegion(weekly.activeCity)
+        guard mapSize.width > 0, mapSize.height > 0 else {
+            return viewModel.clusters(cellLat: 0, cellLng: 0)
+        }
+        let cell: CGFloat = 60
+        return viewModel.clusters(
+            cellLat: region.span.latitudeDelta * Double(cell / mapSize.height),
+            cellLng: region.span.longitudeDelta * Double(cell / mapSize.width)
+        )
+    }
+
+    /// Tapping a bubble zooms to fit its restaurants (with margin) so they
+    /// split apart. Bubbles whose members sit on top of each other zoom to
+    /// street level instead.
+    private func zoomInto(_ cluster: FindViewModel.MapCluster) {
+        let lats = cluster.members.compactMap(\.latitude)
+        let lngs = cluster.members.compactMap(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLng = lngs.min(), let maxLng = lngs.max() else { return }
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLat - minLat) * 2.2, 0.004),
+            longitudeDelta: max((maxLng - minLng) * 2.2, 0.004)
+        )
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2,
+                                           longitude: (minLng + maxLng) / 2),
+            span: span
+        )
+        withAnimation(.easeInOut(duration: 0.35)) {
+            cameraPosition = .region(region)
         }
     }
 
@@ -449,6 +500,36 @@ private struct FindMapMarker: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Numbered bubble standing in for several nearby restaurants. Orange (the
+/// app's accent) so it reads differently from the red single pins; grows a
+/// little with the count.
+private struct FindClusterMarker: View {
+    let count: Int
+    let action: () -> Void
+
+    private var diameter: CGFloat {
+        switch count {
+        case ..<5:  return 32
+        case ..<15: return 38
+        default:    return 44
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text("\(count)")
+                .font(.system(size: count < 100 ? 14 : 12, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: diameter, height: diameter)
+                .background(Circle().fill(Color(red: 0.98, green: 0.48, blue: 0.10)))
+                .overlay(Circle().stroke(Color.white, lineWidth: 2.5))
+                .shadow(color: .black.opacity(0.25), radius: 3, y: 1.5)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(count) restaurants. Double-tap to zoom in.")
     }
 }
 
